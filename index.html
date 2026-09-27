@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Windows 7 Aero Simulation</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600;700&display=swap');
+* { user-select: none; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background-color: #0d2c54; }
+.desktop-bg {
+  background: radial-gradient(circle at 50% 30%, #3a82c4 0%, #174b88 50%, #0a2544 100%);
+  position: absolute; inset: 0; z-index: 0; overflow: hidden;
+}
+.desktop-bg::before {
+  content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 60%);
+  transform: rotate(-15deg); pointer-events: none;
+}
+.desktop-lines {
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 2px, transparent 2px, transparent 8px);
+  pointer-events: none;
+}
+.aero-glass {
+  background: rgba(195, 222, 250, 0.35);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+.aero-window {
+  position: absolute; display: flex; flex-direction: column;
+  border-radius: 8px 8px 4px 4px; overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.5);
+  min-width: 250px; min-height: 150px;
+}
+.aero-titlebar {
+  height: 32px; background: linear-gradient(to bottom, rgba(255,255,255,0.5) 0%, rgba(200,225,255,0.3) 50%, rgba(150,190,240,0.4) 51%, rgba(180,215,255,0.5) 100%);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 8px;
+  border-bottom: 1px solid rgba(0,0,0,0.15); cursor: default;
+}
+.aero-titlebar-active {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.7) 0%, rgba(185,220,255,0.5) 50%, rgba(120,180,245,0.6) 51%, rgba(160,210,255,0.7) 100%);
+}
+.win-btn {
+  width: 28px; height: 18px; border-radius: 3px; display: inline-flex; justify-content: center; align-items: center;
+  font-size: 10px; margin-left: 2px; border: 1px solid rgba(255,255,255,0.5);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); transition: all 0.1s;
+}
+.win-btn-min, .win-btn-max {
+  background: linear-gradient(to bottom, rgba(240,240,240,0.8), rgba(190,190,190,0.8));
+  color: #333;
+}
+.win-btn-min:hover, .win-btn-max:hover {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.9), rgba(210,230,255,0.9));
+  box-shadow: 0 0 8px rgba(100,180,255,0.8);
+}
+.win-btn-close {
+  background: linear-gradient(to bottom, #f88, #c33); color: white; border-color: #faa;
+}
+.win-btn-close:hover {
+  background: linear-gradient(to bottom, #f55, #f00); box-shadow: 0 0 8px rgba(255,50,50,0.8);
+}
+.taskbar {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 40px; z-index: 99999;
+  background: linear-gradient(to bottom, rgba(20, 40, 70, 0.65) 0%, rgba(10, 20, 40, 0.75) 100%);
+  backdrop-filter: blur(15deg) saturate(180%); -webkit-backdrop-filter: blur(15deg) saturate(180%);
+  border-top: 1px solid rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: space-between;
+}
+.start-orb {
+  width: 36px; height: 36px; border-radius: 50%; margin-left: 4px; cursor: pointer;
+  background: radial-gradient(circle at 35% 35%, #62c2ff, #0052a5 60%, #002d62);
+  box-shadow: 0 0 8px rgba(0,150,255,0.6), inset 0 1px 2px rgba(255,255,255,0.8);
+  display: flex; align-items: center; justify-content: center; position: relative;
+  transition: all 0.2s; border: 1px solid rgba(255,255,255,0.4);
+}
+.start-orb:hover {
+  box-shadow: 0 0 15px rgba(0,180,255,0.9), inset 0 1px 4px rgba(255,255,255,1);
+  transform: scale(1.05);
+}
+.start-orb-flag {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.5px; width: 16px; height: 16px; transform: rotate(-5deg);
+}
+.flag-p { border-radius: 1px; }
+.flag-red { background: #f35325; }
+.flag-green { background: #81bc06; }
+.flag-blue { background: #05a6f0; }
+.flag-yellow { background: #ffba08; }
+
+.taskbar-item {
+  height: 34px; min-width: 48px; max-width: 160px; padding: 0 8px; margin: 0 2px;
+  border-radius: 3px; display: flex; align-items: center; gap: 6px; cursor: pointer;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.15), rgba(255,255,255,0.05));
+  border: 1px solid rgba(255,255,255,0.2); transition: all 0.2s; position: relative;
+}
+.taskbar-item:hover {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.3), rgba(255,255,255,0.15));
+  box-shadow: inset 0 0 10px rgba(255,255,255,0.5);
+}
+.taskbar-item.active {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.4), rgba(200,230,255,0.25));
+  border-color: rgba(255,255,255,0.5); box-shadow: inset 0 0 8px rgba(255,255,255,0.6), 0 0 10px rgba(0,140,255,0.4);
+}
+.start-menu {
+  position: absolute; bottom: 42px; left: 0; width: 380px; height: 480px;
+  border-radius: 8px 8px 0 0; display: none; flex-direction: column; z-index: 999999;
+  padding: 8px; box-shadow: 0 -5px 25px rgba(0,0,0,0.5);
+}
+.start-menu-inner {
+  display: flex; height: 100%; border-radius: 4px; overflow: hidden;
+  background: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.9);
+}
+.start-left { width: 58%; background: #fff; padding: 6px; display: flex; flex-direction: column; }
+.start-right { width: 42%; background: linear-gradient(to right, #e8f1f9, #d0e3f4); border-left: 1px solid #b2cbe4; padding: 8px 4px; display: flex; flex-direction: column; gap: 4px; }
+.start-item {
+  display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 3px; cursor: pointer; font-size: 12px; color: #1e395b;
+}
+.start-item:hover { background: linear-gradient(to bottom, #edf4fc, #bde0fe); border: 1px solid #a3d0f8; }
+
+.desktop-icon {
+  width: 76px; height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 4px; margin: 6px; cursor: pointer; text-align: center;
+}
+.desktop-icon:hover {
+  background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+}
+.desktop-icon:active, .desktop-icon.selected {
+  background: rgba(255, 255, 255, 0.35); border: 1px solid rgba(255, 255, 255, 0.6);
+}
+.desktop-icon i { font-size: 30px; margin-bottom: 2px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
+.desktop-icon span { font-size: 11px; color: white; text-shadow: 0 1px 3px black, 0 0 2px black; line-height: 1.1; }
+
+.resize-handle { position: absolute; }
+.resize-r { right: 0; top: 0; bottom: 0; width: 5px; cursor: e-resize; }
+.resize-b { bottom: 0; left: 0; right: 0; height: 5px; cursor: s-resize; }
+.resize-br { right: 0; bottom: 0; width: 10px; height: 10px; cursor: se-resize; }
+
+.sys-tray-popup {
+  position: absolute; bottom: 45px; right: 10px; background: rgba(240, 245, 250, 0.95);
+  border: 1px solid rgba(255,255,255,0.8); border-radius: 6px; padding: 12px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.3); display: none; z-index: 999998; backdrop-filter: blur(10px);
+}
+</style>
+</head>
+<body>
+
+<div class="desktop-bg" id="desktop">
+  <div class="desktop-lines"></div>
+  <div class="p-2 grid grid-flow-col grid-rows-6 gap-2 auto-cols-max h-[calc(100vh-40px)]" id="desktop-icons"></div>
+</div>
+
+<div class="start-menu aero-glass" id="start-menu">
+  <div class="start-menu-inner">
+    <div class="start-left">
+      <div id="start-pinned-apps" class="flex-1 space-y-1 overflow-y-auto"></div>
+      <div class="border-t border-gray-200 pt-1 mt-1">
+        <div class="relative">
+          <input type="text" id="start-search" placeholder="Search programs and files" class="w-full text-xs p-1.5 pl-6 border border-gray-300 rounded outline-none italic focus:not-italic focus:border-blue-400">
+          <span class="absolute left-2 top-2 text-gray-400 text-xs" style="font-style:normal;">🔍</span>
+        </div>
+      </div>
+    </div>
+    <div class="start-right">
+      <div class="flex items-center gap-2 p-1.5 mb-2 border-b border-blue-200">
+        <div class="w-10 h-10 rounded bg-gradient-to-tr from-blue-500 to-indigo-300 border border-white shadow flex items-center justify-center text-white text-lg font-bold">7</div>
+        <span class="font-bold text-xs text-blue-900">User Admin</span>
+      </div>
+      <div class="start-item" onclick="openApp('explorer', 'Documents')"><span class="text-yellow-500" style="font-style:normal;">📁</span> Documents</div>
+      <div class="start-item" onclick="openApp('explorer', 'Pictures')"><span class="text-blue-500" style="font-style:normal;">🖼️</span> Pictures</div>
+      <div class="start-item" onclick="openApp('explorer', 'Music')"><span class="text-purple-500" style="font-style:normal;">🎵</span> Music</div>
+      <div class="border-t border-blue-200 my-1"></div>
+      <div class="start-item" onclick="openApp('explorer', 'Computer')"><span class="text-gray-600" style="font-style:normal;">🖥️</span> Computer</div>
+      <div class="start-item" onclick="openApp('control-panel')"><span class="text-gray-700" style="font-style:normal;">🎚️</span> Control Panel</div>
+      <div class="mt-auto pt-2 flex justify-end">
+        <button onclick="playSFX('shutdown'); setTimeout(() => alert('Windows is shutting down...'), 800)" class="px-3 py-1 bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 text-white rounded text-xs font-semibold shadow border border-blue-300 flex items-center gap-1">
+          <span class="text-xs" style="font-style:normal;">⏻</span> Shut Down
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sys-tray-popup" id="calendar-popup">
+  <div class="text-center font-semibold text-sm mb-2 text-gray-700" id="cal-date-header">September 2026</div>
+  <div class="grid grid-cols-7 gap-1 text-center text-xs text-gray-600 font-bold mb-1">
+    <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+  </div>
+  <div class="grid grid-cols-7 gap-1 text-center text-xs" id="cal-days"></div>
+</div>
+
+<div class="sys-tray-popup" id="volume-popup">
+  <div class="flex flex-col items-center gap-2 p-2">
+    <span class="text-xs font-semibold text-gray-700">Speakers</span>
+    <input type="range" id="vol-slider" min="0" max="100" value="80" class="h-24 [writing-mode:bt-lr] [-webkit-appearance:slider-vertical]">
+    <span class="text-gray-600 cursor-pointer" style="font-style:normal;" onclick="toggleMute()">🔊</span>
+  </div>
+</div>
+
+<div class="taskbar">
+  <div class="flex items-center gap-1 h-full pl-1">
+    <div class="start-orb" onclick="toggleStartMenu()">
+      <div class="start-orb-flag">
+        <div class="flag-p flag-red"></div>
+        <div class="flag-p flag-green"></div>
+        <div class="flag-p flag-blue"></div>
+        <div class="flag-p flag-yellow"></div>
+      </div>
+    </div>
+    <div id="taskbar-apps" class="flex items-center gap-1 h-full pl-2"></div>
+  </div>
+
+  <div class="flex items-center h-full pr-1">
+    <div class="flex items-center gap-2 px-2 h-full hover:bg-white/10 cursor-pointer rounded" onclick="toggleTrayPopup('volume-popup')">
+      <span class="text-white text-xs" style="font-style:normal;">🔊</span>
+    </div>
+    <div class="flex items-center gap-2 px-2 h-full hover:bg-white/10 cursor-pointer rounded">
+      <span class="text-white text-xs" style="font-style:normal;">📶</span>
+    </div>
+    <div class="flex flex-col justify-center px-2 h-full hover:bg-white/10 cursor-pointer rounded text-right" onclick="toggleTrayPopup('calendar-popup')">
+      <span class="text-white text-xs leading-none font-semibold" id="tray-time">12:00 PM</span>
+      <span class="text-white text-[10px] leading-none mt-1 opacity-80" id="tray-date">9/25/2026</span>
+    </div>
+    <div class="w-3 h-full border-l border-white/30 bg-white/10 hover:bg-white/40 cursor-pointer" title="Show Desktop" onclick="minimizeAll()"></div>
+  </div>
+</div>
+
+<script>
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+
+function initAudio() {
+  if (!audioCtx) audioCtx = new AudioContext();
+}
+
+function playSFX(type) {
+  try {
+    initAudio();
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    if (type === 'click') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+    } else if (type === 'minimize') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+    } else if (type === 'maximize') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(700, audioCtx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+    } else if (type === 'startup') {
+      const notes = [261.63, 329.63, 392.00, 523.25];
+      notes.forEach((freq, idx) => {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.connect(g); g.connect(audioCtx.destination);
+        o.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.12);
+        g.gain.setValueAtTime(0.1, audioCtx.currentTime + idx * 0.12);
+        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * 0.12 + 0.6);
+        o.start(audioCtx.currentTime + idx * 0.12);
+        o.stop(audioCtx.currentTime + idx * 0.12 + 0.6);
+      });
+    }
+  } catch(e){}
+}
+
+let windows = {};
+let activeWindowId = null;
+let zIndexCounter = 100;
+
+const ICON_EMOJI = {
+  'fa-desktop': '🖥️', 'fa-folder': '📁', 'fa-file-lines': '📝', 'fa-calculator': '🧮',
+  'fa-palette': '🎨', 'fa-land-mine-on': '💣', 'fa-play-circle': '▶️', 'fa-globe': '🌐',
+  'fa-sliders': '🎚️', 'fa-trash': '🗑️', 'fa-window-maximize': '🗔', 'fa-hard-drive': '💽',
+  'fa-image': '🖼️', 'fa-music': '🎵'
+};
+function iconEmoji(name){ return ICON_EMOJI[name] || '▫️'; }
+
+const APPS = {
+  computer: { title: 'Computer', icon: 'fa-desktop', color: 'text-blue-500', width: 650, height: 420 },
+  documents: { title: 'Documents', icon: 'fa-folder', color: 'text-yellow-500', width: 600, height: 400 },
+  notepad: { title: 'Notepad', icon: 'fa-file-lines', color: 'text-blue-600', width: 480, height: 350 },
+  calculator: { title: 'Calculator', icon: 'fa-calculator', color: 'text-gray-700', width: 260, height: 340 },
+  paint: { title: 'Paint', icon: 'fa-palette', color: 'text-pink-500', width: 620, height: 450 },
+  minesweeper: { title: 'Minesweeper', icon: 'fa-land-mine-on', color: 'text-red-500', width: 280, height: 360 },
+  mediaplayer: { title: 'Windows Media Player', icon: 'fa-play-circle', color: 'text-orange-500', width: 550, height: 380 },
+  browser: { title: 'Internet Explorer', icon: 'fa-globe', color: 'text-blue-400', width: 700, height: 480 },
+  'control-panel': { title: 'Control Panel', icon: 'fa-sliders', color: 'text-emerald-600', width: 580, height: 400 },
+  trash: { title: 'Recycle Bin', icon: 'fa-trash', color: 'text-gray-500', width: 500, height: 350 }
+};
+
+function renderDesktopIcons() {
+  const container = document.getElementById('desktop-icons');
+  container.innerHTML = '';
+  Object.keys(APPS).forEach(id => {
+    const app = APPS[id];
+    const iconEl = document.createElement('div');
+    iconEl.className = 'desktop-icon';
+    iconEl.ondblclick = () => openApp(id);
+    iconEl.onclick = (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.desktop-icon').forEach(el => el.classList.remove('selected'));
+      iconEl.classList.add('selected');
+    };
+    iconEl.innerHTML = `<span class="${app.color}" style="font-style:normal;font-size:28px;">${iconEmoji(app.icon)}</span><span>${app.title}</span>`;
+    container.appendChild(iconEl);
+  });
+}
+
+function renderStartMenuPinned() {
+  const container = document.getElementById('start-pinned-apps');
+  container.innerHTML = '';
+  Object.keys(APPS).forEach(id => {
+    const app = APPS[id];
+    const item = document.createElement('div');
+    item.className = 'start-item';
+    item.onclick = () => { openApp(id); toggleStartMenu(false); };
+    item.innerHTML = `<span class="${app.color} text-lg w-6" style="font-style:normal;">${iconEmoji(app.icon)}</span><span class="font-medium">${app.title}</span>`;
+    container.appendChild(item);
+  });
+}
+
+function openApp(appId, customTitle = null) {
+  playSFX('click');
+  const id = appId + (customTitle ? '_' + customTitle.replace(/\s+/g, '') : '');
+  if (windows[id]) {
+    if (windows[id].minimized) restoreWindow(id);
+    bringToFront(id);
+    return;
+  }
+
+  const baseApp = APPS[appId] || { title: customTitle || 'Application', icon: 'fa-window-maximize', color: 'text-blue-500', width: 500, height: 380 };
+  const title = customTitle || baseApp.title;
+
+  const win = document.createElement('div');
+  win.id = `win-${id}`;
+  win.className = 'aero-window aero-glass';
+  win.style.width = `${baseApp.width}px`;
+  win.style.height = `${baseApp.height}px`;
+  win.style.left = `${60 + Object.keys(windows).length * 25}px`;
+  win.style.top = `${40 + Object.keys(windows).length * 25}px`;
+  win.style.zIndex = ++zIndexCounter;
+
+  win.innerHTML = `
+    <div class="aero-titlebar" onmousedown="startDrag(event, '${id}')">
+      <div class="flex items-center gap-2 overflow-hidden">
+        <span class="${baseApp.color} text-xs" style="font-style:normal;">${iconEmoji(baseApp.icon)}</span>
+        <span class="text-xs font-semibold text-gray-800 truncate">${title}</span>
+      </div>
+      <div class="flex items-center">
+        <button class="win-btn win-btn-min" onclick="minimizeWindow('${id}')"><span class="" style="font-style:normal;">➖</span></button>
+        <button class="win-btn win-btn-max" onclick="toggleMaximize('${id}')"><span class="" style="font-style:normal;">⬜</span></button>
+        <button class="win-btn win-btn-close" onclick="closeWindow('${id}')"><span class="" style="font-style:normal;">✖️</span></button>
+      </div>
+    </div>
+    <div class="flex-1 bg-white/90 overflow-hidden flex flex-col relative" id="win-body-${id}">
+      ${getAppHTML(appId, id)}
+    </div>
+    <div class="resize-handle resize-r" onmousedown="startResize(event, '${id}', 'r')"></div>
+    <div class="resize-handle resize-b" onmousedown="startResize(event, '${id}', 'b')"></div>
+    <div class="resize-handle resize-br" onmousedown="startResize(event, '${id}', 'br')"></div>
+  `;
+
+  win.onmousedown = () => bringToFront(id);
+  document.getElementById('desktop').appendChild(win);
+
+  windows[id] = { id, appId, title, el: win, minimized: false, maximized: false, prevRect: null };
+  activeWindowId = id;
+
+  addTaskbarItem(id, baseApp.icon, title);
+  initAppLogic(appId, id);
+  bringToFront(id);
+}
+
+function bringToFront(id) {
+  if (!windows[id]) return;
+  activeWindowId = id;
+  windows[id].el.style.zIndex = ++zIndexCounter;
+  document.querySelectorAll('.aero-titlebar').forEach(tb => tb.classList.remove('aero-titlebar-active'));
+  document.querySelectorAll('.taskbar-item').forEach(ti => ti.classList.remove('active'));
+  
+  const activeTb = windows[id].el.querySelector('.aero-titlebar');
+  if (activeTb) activeTb.classList.add('aero-titlebar-active');
+  
+  const tbItem = document.getElementById(`tb-${id}`);
+  if (tbItem) tbItem.classList.add('active');
+}
+
+function closeWindow(id) {
+  playSFX('click');
+  if (windows[id]) {
+    windows[id].el.remove();
+    delete windows[id];
+    const tbItem = document.getElementById(`tb-${id}`);
+    if (tbItem) tbItem.remove();
+  }
+}
+
+function minimizeWindow(id) {
+  playSFX('minimize');
+  if (windows[id]) {
+    windows[id].minimized = true;
+    windows[id].el.style.display = 'none';
+    const tbItem = document.getElementById(`tb-${id}`);
+    if (tbItem) tbItem.classList.remove('active');
+  }
+}
+
+function restoreWindow(id) {
+  playSFX('maximize');
+  if (windows[id]) {
+    windows[id].minimized = false;
+    windows[id].el.style.display = 'flex';
+    bringToFront(id);
+  }
+}
+
+function toggleMaximize(id) {
+  playSFX('click');
+  const win = windows[id];
+  if (!win) return;
+  if (win.maximized) {
+    win.el.style.left = `${win.prevRect.left}px`;
+    win.el.style.top = `${win.prevRect.top}px`;
+    win.el.style.width = `${win.prevRect.width}px`;
+    win.el.style.height = `${win.prevRect.height}px`;
+    win.maximized = false;
+  } else {
+    win.prevRect = { left: win.el.offsetLeft, top: win.el.offsetTop, width: win.el.offsetWidth, height: win.el.offsetHeight };
+    win.el.style.left = '0px';
+    win.el.style.top = '0px';
+    win.el.style.width = '100vw';
+    win.el.style.height = 'calc(100vh - 40px)';
+    win.maximized = true;
+  }
+}
+
+function addTaskbarItem(id, icon, title) {
+  const container = document.getElementById('taskbar-apps');
+  const item = document.createElement('div');
+  item.id = `tb-${id}`;
+  item.className = 'taskbar-item active';
+  item.onclick = () => {
+    if (windows[id].minimized) restoreWindow(id);
+    else if (activeWindowId === id) minimizeWindow(id);
+    else bringToFront(id);
+  };
+  item.innerHTML = `<span class="text-xs text-white" style="font-style:normal;">${iconEmoji(icon)}</span><span class="text-xs text-white truncate">${title}</span>`;
+  container.appendChild(item);
+}
+
+let dragData = null;
+function startDrag(e, id) {
+  if (e.target.closest('.win-btn')) return;
+  bringToFront(id);
+  const win = windows[id].el;
+  dragData = { type: 'drag', id, startX: e.clientX, startY: e.clientY, left: win.offsetLeft, top: win.offsetTop };
+}
+
+function startResize(e, id, dir) {
+  e.stopPropagation();
+  bringToFront(id);
+  const win = windows[id].el;
+  dragData = { type: 'resize', id, dir, startX: e.clientX, startY: e.clientY, width: win.offsetWidth, height: win.offsetHeight };
+}
+
+window.onmousemove = (e) => {
+  if (!dragData) return;
+  const win = windows[dragData.id].el;
+  if (dragData.type === 'drag') {
+    win.style.left = `${dragData.left + (e.clientX - dragData.startX)}px`;
+    win.style.top = `${dragData.top + (e.clientY - dragData.startY)}px`;
+  } else if (dragData.type === 'resize') {
+    if (dragData.dir.includes('r')) win.style.width = `${Math.max(250, dragData.width + (e.clientX - dragData.startX))}px`;
+    if (dragData.dir.includes('b')) win.style.height = `${Math.max(150, dragData.height + (e.clientY - dragData.startY))}px`;
+  }
+};
+
+window.onmouseup = () => { dragData = null; };
+
+function getAppHTML(appId, id) {
+  switch (appId) {
+    case 'notepad':
+      return `
+        <div class="bg-gray-100 text-xs p-1 border-b flex gap-3">
+          <span class="cursor-pointer hover:bg-gray-200 px-1 rounded" onclick="newNotepadDoc('${id}')">New</span>
+          <span class="cursor-pointer hover:bg-gray-200 px-1 rounded" onclick="saveNotepadDoc('${id}')">Save</span>
+        </div>
+        <textarea id="note-text-${id}" class="w-full flex-1 p-2 outline-none resize-none font-mono text-sm" placeholder="Type here..."></textarea>
+      `;
+    case 'calculator':
+      return `
+        <div class="p-2 bg-gray-200 h-full flex flex-col gap-2">
+          <input type="text" id="calc-screen-${id}" readonly value="0" class="w-full text-right p-2 text-xl font-mono bg-white border border-gray-400 rounded">
+          <div class="grid grid-cols-4 gap-1 flex-1">
+            <button onclick="calcInput('${id}', 'C')" class="col-span-2 bg-red-100 hover:bg-red-200 rounded font-bold text-xs">C</button>
+            <button onclick="calcInput('${id}', '/')" class="bg-gray-300 hover:bg-gray-400 rounded font-bold text-xs">/</button>
+            <button onclick="calcInput('${id}', '*')" class="bg-gray-300 hover:bg-gray-400 rounded font-bold text-xs">*</button>
+            <button onclick="calcInput('${id}', '7')" class="bg-white hover:bg-gray-100 rounded font-bold">7</button>
+            <button onclick="calcInput('${id}', '8')" class="bg-white hover:bg-gray-100 rounded font-bold">8</button>
+            <button onclick="calcInput('${id}', '9')" class="bg-white hover:bg-gray-100 rounded font-bold">9</button>
+            <button onclick="calcInput('${id}', '-')" class="bg-gray-300 hover:bg-gray-400 rounded font-bold text-xs">-</button>
+            <button onclick="calcInput('${id}', '4')" class="bg-white hover:bg-gray-100 rounded font-bold">4</button>
+            <button onclick="calcInput('${id}', '5')" class="bg-white hover:bg-gray-100 rounded font-bold">5</button>
+            <button onclick="calcInput('${id}', '6')" class="bg-white hover:bg-gray-100 rounded font-bold">6</button>
+            <button onclick="calcInput('${id}', '+')" class="bg-gray-300 hover:bg-gray-400 rounded font-bold text-xs">+</button>
+            <button onclick="calcInput('${id}', '1')" class="bg-white hover:bg-gray-100 rounded font-bold">1</button>
+            <button onclick="calcInput('${id}', '2')" class="bg-white hover:bg-gray-100 rounded font-bold">2</button>
+            <button onclick="calcInput('${id}', '3')" class="bg-white hover:bg-gray-100 rounded font-bold">3</button>
+            <button onclick="calcInput('${id}', '=')" class="row-span-2 bg-blue-500 hover:bg-blue-600 text-white rounded font-bold text-xs">=</button>
+            <button onclick="calcInput('${id}', '0')" class="col-span-2 bg-white hover:bg-gray-100 rounded font-bold">0</button>
+            <button onclick="calcInput('${id}', '.')" class="bg-white hover:bg-gray-100 rounded font-bold">.</button>
+          </div>
+        </div>
+      `;
+    case 'paint':
+      return `
+        <div class="p-1 bg-gray-100 border-b flex items-center gap-2">
+          <input type="color" id="paint-color-${id}" value="#000000" class="w-6 h-6 border cursor-pointer">
+          <input type="range" id="paint-size-${id}" min="1" max="20" value="3" class="w-20">
+          <button onclick="clearPaint('${id}')" class="text-xs px-2 py-1 bg-white border rounded hover:bg-gray-50">Clear</button>
+        </div>
+        <div class="flex-1 bg-gray-300 overflow-auto p-2 flex justify-center items-center">
+          <canvas id="paint-canvas-${id}" width="550" height="350" class="bg-white shadow border cursor-crosshair"></canvas>
+        </div>
+      `;
+    case 'minesweeper':
+      return `
+        <div class="p-2 bg-gray-200 h-full flex flex-col items-center justify-center">
+          <div class="bg-gray-300 p-2 border-2 border-white shadow flex flex-col items-center">
+            <div class="flex justify-between items-center w-full bg-black text-red-600 font-mono text-xl p-1 mb-2 border border-gray-600">
+              <span id="mine-count-${id}">010</span>
+              <button onclick="initMinesweeper('${id}')" id="mine-face-${id}" class="text-base bg-gray-200 border p-1 rounded">😊</button>
+              <span id="mine-time-${id}">000</span>
+            </div>
+            <div id="mine-grid-${id}" class="grid grid-cols-9 gap-0.5 bg-gray-400 p-0.5 border-2 border-gray-600"></div>
+          </div>
+        </div>
+      `;
+    case 'mediaplayer':
+      return `
+        <div class="bg-black h-full flex flex-col items-center justify-between p-4 text-white">
+          <div class="flex-1 flex flex-col items-center justify-center gap-4">
+            <span class="text-6xl text-blue-400 animate-spin" style="font-style:normal;animation-duration: 4s;display:inline-block;">💿</span>
+            <div class="text-center">
+              <div class="font-bold text-sm">Sample Symphony</div>
+              <div class="text-xs text-gray-400">Windows 7 Audio Demo</div>
+            </div>
+          </div>
+          <div class="w-full bg-gray-800 p-2 rounded flex items-center justify-between">
+            <button onclick="toggleAudioDemo('${id}')" id="play-btn-${id}" class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs"><span class="" style="font-style:normal;">▶️</span></button>
+            <div class="w-2/3 bg-gray-600 h-1.5 rounded overflow-hidden">
+              <div id="audio-progress-${id}" class="bg-blue-400 h-full w-0"></div>
+            </div>
+            <span class="text-xs" style="font-style:normal;">🔊</span>
+          </div>
+        </div>
+      `;
+    case 'browser':
+      return `
+        <div class="bg-gray-200 p-1 flex items-center gap-1 border-b">
+          <button class="px-2 text-xs text-gray-600"><span class="" style="font-style:normal;">←</span></button>
+          <button class="px-2 text-xs text-gray-600"><span class="" style="font-style:normal;">→</span></button>
+          <button class="px-2 text-xs text-gray-600"><span class="" style="font-style:normal;">⟳</span></button>
+          <input type="text" value="https://www.bing.com" class="flex-1 text-xs p-1 border rounded bg-white">
+        </div>
+        <div class="flex-1 bg-white p-6 flex flex-col items-center justify-center text-center">
+          <h1 class="text-3xl font-bold text-blue-600 mb-2">Bing</h1>
+          <div class="w-full max-w-md flex border rounded shadow-sm overflow-hidden mb-4">
+            <input type="text" placeholder="Search the web..." class="flex-1 p-2 text-xs outline-none">
+            <button class="bg-blue-500 text-white px-4 text-xs">Search</button>
+          </div>
+          <div class="text-xs text-gray-400">Internet Explorer 8 Simulation</div>
+        </div>
+      `;
+    case 'computer':
+    case 'documents':
+    case 'trash':
+      return `
+        <div class="bg-gray-100 p-1 border-b text-xs flex gap-2 text-gray-700">
+          <span>Organize</span> | <span>System Properties</span>
+        </div>
+        <div class="flex-1 flex">
+          <div class="w-32 bg-blue-50/50 p-2 border-r text-xs space-y-2">
+            <div class="font-bold text-blue-900">Favorites</div>
+            <div class="pl-2 cursor-pointer hover:text-blue-600" onclick="openApp('documents')"><span class="text-yellow-500" style="font-style:normal;">📁</span> Documents</div>
+            <div class="pl-2 cursor-pointer hover:text-blue-600" onclick="openApp('computer')"><span class="text-gray-500" style="font-style:normal;">🖥️</span> Computer</div>
+          </div>
+          <div class="flex-1 p-4 grid grid-cols-3 gap-4 auto-rows-max">
+            ${appId === 'computer' ? `
+              <div class="flex items-center gap-2 p-2 border rounded hover:bg-blue-50 cursor-pointer">
+                <span class="text-2xl text-gray-600" style="font-style:normal;">💽</span>
+                <div>
+                  <div class="text-xs font-bold">Local Disk (C:)</div>
+                  <div class="w-20 bg-gray-200 h-2 rounded overflow-hidden mt-1"><div class="bg-blue-500 h-full w-2/3"></div></div>
+                </div>
+              </div>
+            ` : `<div class="text-xs text-gray-500 italic">This folder is empty.</div>`}
+          </div>
+        </div>
+      `;
+    case 'control-panel':
+      return `
+        <div class="p-4 grid grid-cols-2 gap-4">
+          <div class="flex gap-3 items-start cursor-pointer hover:bg-gray-100 p-2 rounded" onclick="changeTheme('#174b88')">
+            <span class="text-2xl text-blue-600" style="font-style:normal;">🖌️</span>
+            <div>
+              <div class="text-xs font-bold text-blue-900">Default Blue Theme</div>
+              <div class="text-[10px] text-gray-500">Standard Aero Glass Background</div>
+            </div>
+          </div>
+          <div class="flex gap-3 items-start cursor-pointer hover:bg-gray-100 p-2 rounded" onclick="changeTheme('#2d5a27')">
+            <span class="text-2xl text-green-600" style="font-style:normal;">🌳</span>
+            <div>
+              <div class="text-xs font-bold text-blue-900">Forest Green Theme</div>
+              <div class="text-[10px] text-gray-500">Nature Color Palette</div>
+            </div>
+          </div>
+        </div>
+      `;
+    default: return `<div class="p-4 text-xs">App content unavailable.</div>`;
+  }
+}
+
+function initAppLogic(appId, id) {
+  if (appId === 'paint') {
+    const canvas = document.getElementById(`paint-canvas-${id}`);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let painting = false;
+
+    canvas.onmousedown = () => painting = true;
+    canvas.onmouseup = () => { painting = false; ctx.beginPath(); };
+    canvas.onmousemove = (e) => {
+      if (!painting) return;
+      const rect = canvas.getBoundingClientRect();
+      ctx.lineWidth = document.getElementById(`paint-size-${id}`).value;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = document.getElementById(`paint-color-${id}`).value;
+      ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    };
+  } else if (appId === 'minesweeper') {
+    initMinesweeper(id);
+  }
+}
+
+function clearPaint(id) {
+  const canvas = document.getElementById(`paint-canvas-${id}`);
+  if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
+let calcState = {};
+function calcInput(id, val) {
+  playSFX('click');
+  const screen = document.getElementById(`calc-screen-${id}`);
+  if (!calcState[id]) calcState[id] = { expr: '' };
+
+  if (val === 'C') {
+    calcState[id].expr = '';
+    screen.value = '0';
+  } else if (val === '=') {
+    try { screen.value = eval(calcState[id].expr) || '0'; calcState[id].expr = screen.value; }
+    catch(e) { screen.value = 'Error'; calcState[id].expr = ''; }
+  } else {
+    calcState[id].expr += val;
+    screen.value = calcState[id].expr;
+  }
+}
+
+function initMinesweeper(id) {
+  const grid = document.getElementById(`mine-grid-${id}`);
+  if (!grid) return;
+  grid.innerHTML = '';
+  const rows = 9, cols = 9, mines = 10;
+  let cells = [];
+
+  for (let i = 0; i < rows * cols; i++) {
+    const cell = document.createElement('button');
+    cell.className = 'w-6 h-6 bg-gray-200 border border-gray-400 font-bold text-xs flex items-center justify-center';
+    cell.onclick = () => {
+      playSFX('click');
+      cell.classList.remove('bg-gray-200');
+      cell.classList.add('bg-gray-100');
+      if (Math.random() < 0.15) {
+        cell.innerText = '💣';
+        cell.classList.add('bg-red-400');
+        document.getElementById(`mine-face-${id}`).innerText = '😵';
+      } else {
+        cell.innerText = '1';
+      }
+    };
+    grid.appendChild(cell);
+  }
+}
+
+function toggleAudioDemo(id) {
+  playSFX('click');
+  const btn = document.getElementById(`play-btn-${id}`);
+  const progress = document.getElementById(`audio-progress-${id}`);
+  if (btn.innerHTML.includes('play')) {
+    btn.innerHTML = '<span class="" style="font-style:normal;">⏸️</span>';
+    progress.style.transition = 'width 10s linear';
+    progress.style.width = '100%';
+  } else {
+    btn.innerHTML = '<span class="" style="font-style:normal;">▶️</span>';
+    progress.style.transition = 'none';
+    progress.style.width = '0%';
+  }
+}
+
+function newNotepadDoc(id) {
+  document.getElementById(`note-text-${id}`).value = '';
+}
+
+function saveNotepadDoc(id) {
+  const text = document.getElementById(`note-text-${id}`).value;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Document.txt';
+  a.click();
+}
+
+function changeTheme(color) {
+  document.getElementById('desktop').style.background = `radial-gradient(circle at 50% 30%, ${color} 0%, #0a2544 100%)`;
+}
+
+function toggleStartMenu(force) {
+  playSFX('click');
+  const sm = document.getElementById('start-menu');
+  const show = force !== undefined ? force : sm.style.display !== 'flex';
+  sm.style.display = show ? 'flex' : 'none';
+}
+
+function toggleTrayPopup(id) {
+  playSFX('click');
+  const popup = document.getElementById(id);
+  const show = popup.style.display !== 'block';
+  document.querySelectorAll('.sys-tray-popup').forEach(p => p.style.display = 'none');
+  popup.style.display = show ? 'block' : 'none';
+}
+
+function minimizeAll() {
+  Object.keys(windows).forEach(id => minimizeWindow(id));
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('tray-time').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('tray-date').innerText = now.toLocaleDateString();
+}
+
+window.onclick = (e) => {
+  if (!e.target.closest('#start-menu') && !e.target.closest('.start-orb')) toggleStartMenu(false);
+  if (!e.target.closest('.sys-tray-popup') && !e.target.closest('.taskbar')) {
+    document.querySelectorAll('.sys-tray-popup').forEach(p => p.style.display = 'none');
+  }
+};
+
+window.onload = () => {
+  renderDesktopIcons();
+  renderStartMenuPinned();
+  updateClock();
+  setInterval(updateClock, 1000);
+  playSFX('startup');
+};
+</script>
+</body>
+</html>
