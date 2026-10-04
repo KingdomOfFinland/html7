@@ -24,7 +24,7 @@ body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidde
   pointer-events: none;
 }
 .aero-glass {
-  background: rgba(195, 222, 250, 0.35);
+  background: rgba(195, 222, 250, 0.12);
   backdrop-filter: blur(12px) saturate(160%);
   -webkit-backdrop-filter: blur(12px) saturate(160%);
   border: 1px solid rgba(255, 255, 255, 0.6);
@@ -33,36 +33,70 @@ body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidde
 .aero-window {
   position: absolute; display: flex; flex-direction: column;
   border-radius: 8px 8px 4px 4px; overflow: hidden;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.5);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.125);
   min-width: 250px; min-height: 150px;
 }
 .aero-titlebar {
-  height: 32px; background: linear-gradient(to bottom, rgba(255,255,255,0.5) 0%, rgba(200,225,255,0.3) 50%, rgba(150,190,240,0.4) 51%, rgba(180,215,255,0.5) 100%);
+  height: 32px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.3) 0%, rgba(200,225,255,0.12) 50%, rgba(150,190,240,0.18) 51%, rgba(180,215,255,0.12) 100%);
   display: flex; align-items: center; justify-content: space-between; padding: 0 8px;
   border-bottom: 1px solid rgba(0,0,0,0.15); cursor: default;
 }
 .aero-titlebar-active {
-  background: linear-gradient(to bottom, rgba(255,255,255,0.7) 0%, rgba(185,220,255,0.5) 50%, rgba(120,180,245,0.6) 51%, rgba(160,210,255,0.7) 100%);
+  background: linear-gradient(to bottom, rgba(255,255,255,0.45) 0%, rgba(185,220,255,0.12) 50%, rgba(120,180,245,0.3) 51%, rgba(160,210,255,0.12) 100%);
 }
 .win-btn {
-  width: 28px; height: 18px; border-radius: 3px; display: inline-flex; justify-content: center; align-items: center;
-  font-size: 10px; margin-left: 2px; border: 1px solid rgba(255,255,255,0.5);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); transition: all 0.1s;
+  position: relative; width: 29px; height: 19px; padding: 0; cursor: pointer;
+  margin-left: -1px; border: 1px solid rgba(25,40,65,0.75); border-top: none;
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 48%, rgba(255,255,255,0) 52%),
+    linear-gradient(to bottom, rgba(185,208,240,0.5), rgba(95,140,205,0.75));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55), inset 0 -5px 7px rgba(70,115,190,0.45);
 }
-.win-btn-min, .win-btn-max {
-  background: linear-gradient(to bottom, rgba(240,240,240,0.8), rgba(190,190,190,0.8));
-  color: #333;
+.win-btn:hover {
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.5) 48%, rgba(255,255,255,0) 52%),
+    linear-gradient(to bottom, rgba(170,225,255,0.6), rgba(60,170,235,0.9));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.8), inset 0 -6px 8px rgba(130,225,255,0.9), 0 0 8px rgba(110,200,255,0.9);
 }
-.win-btn-min:hover, .win-btn-max:hover {
-  background: linear-gradient(to bottom, rgba(255,255,255,0.9), rgba(210,230,255,0.9));
-  box-shadow: 0 0 8px rgba(100,180,255,0.8);
-}
+.win-btn-min { margin-left: 0; border-radius: 0 0 0 5px; }
 .win-btn-close {
-  background: linear-gradient(to bottom, #f88, #c33); color: white; border-color: #faa;
+  width: 47px; border-radius: 0 0 5px 0; border-color: rgba(70,10,5,0.85);
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.18) 48%, rgba(255,255,255,0) 52%),
+    linear-gradient(to bottom, #e9a595 0%, #c9452f 50%, #a3200f 52%, #d9644c 100%);
 }
 .win-btn-close:hover {
-  background: linear-gradient(to bottom, #f55, #f00); box-shadow: 0 0 8px rgba(255,50,50,0.8);
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.25) 48%, rgba(255,255,255,0) 52%),
+    linear-gradient(to bottom, #f5b8a8 0%, #ee5c40 50%, #d02f15 52%, #ff8f6a 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7), inset 0 -6px 8px rgba(255,160,90,0.8), 0 0 10px rgba(255,90,60,0.9);
 }
+
+/* symbols: drawn, not typed */
+.win-btn-min::before {
+  content: ""; position: absolute; left: 11px; top: 11px; right: auto; bottom: auto;
+  width: 7px; height: 2px; background: #fff; box-shadow: none;
+  filter: drop-shadow(0 0 1px rgba(20,35,65,0.95));
+}
+.win-btn-max::before {
+  content: ""; position: absolute; left: 10px; top: 5px; right: auto; bottom: auto;
+  width: 6px; height: 3px; box-sizing: content-box; background: none; box-shadow: none;
+  border: 2px solid #fff; border-top-width: 3px;
+  filter: drop-shadow(0 0 1px rgba(20,35,65,0.95));
+}
+.win-btn-close::before {
+  content: ""; position: absolute; left: 19px; top: 5px; width: 9px; height: 9px;
+  background:
+    linear-gradient(45deg, transparent 40%, #fff 45%, #fff 55%, transparent 60%),
+    linear-gradient(-45deg, transparent 40%, #fff 45%, #fff 55%, transparent 60%);
+  filter: drop-shadow(0 0 1px rgba(70,10,5,0.95));
+}
+
+/* buttons hang from the top edge, title gets the white Aero glow */
+.aero-titlebar { align-items: flex-start; padding: 0 6px 0 8px; }
+.aero-titlebar > div:first-child { height: 32px; }
+.aero-titlebar .truncate { text-shadow: 0 0 6px #fff, 0 0 3px #fff; }
 .taskbar {
   position: absolute; bottom: 0; left: 0; right: 0; height: 40px; z-index: 99999;
   background: linear-gradient(to bottom, rgba(20, 40, 70, 0.65) 0%, rgba(10, 20, 40, 0.75) 100%);
@@ -143,13 +177,16 @@ body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidde
   border: 1px solid rgba(255,255,255,0.8); border-radius: 6px; padding: 12px;
   box-shadow: 0 8px 25px rgba(0,0,0,0.3); display: none; z-index: 999998; backdrop-filter: blur(10px);
 }
+
+body.dragging iframe { pointer-events: none; }
+
 </style>
 </head>
 <body>
 
 <div class="desktop-bg" id="desktop">
   <div class="desktop-lines"></div>
-  <div class="p-2 grid grid-flow-col grid-rows-6 gap-2 auto-cols-max h-[calc(100vh-40px)]" id="desktop-icons"></div>
+ <div id="desktop-icons" style="position:absolute; left:0; top:0;"></div>
 </div>
 
 <div class="start-menu aero-glass" id="start-menu">
@@ -304,25 +341,42 @@ const APPS = {
   'control-panel': { title: 'Control Panel', icon: 'fa-sliders', color: 'text-emerald-600', width: 580, height: 400 },
   trash: { title: 'Recycle Bin', icon: 'fa-trash', color: 'text-gray-500', width: 500, height: 350 }
 };
+let iconDrag = null;
 
 function renderDesktopIcons() {
   const container = document.getElementById('desktop-icons');
   container.innerHTML = '';
-  Object.keys(APPS).forEach(id => {
+  Object.keys(APPS).forEach((id, i) => {
     const app = APPS[id];
     const iconEl = document.createElement('div');
     iconEl.className = 'desktop-icon';
+    iconEl.style.position = 'absolute';
+    iconEl.style.left = (8 + Math.floor(i / 6) * 90) + 'px';
+    iconEl.style.top = (8 + (i % 6) * 80) + 'px';
     iconEl.ondblclick = () => openApp(id);
     iconEl.onclick = (e) => {
       e.stopPropagation();
       document.querySelectorAll('.desktop-icon').forEach(el => el.classList.remove('selected'));
       iconEl.classList.add('selected');
     };
+    iconEl.onmousedown = (e) => {
+      iconDrag = { el: iconEl, startX: e.clientX, startY: e.clientY,
+                   left: parseInt(iconEl.style.left), top: parseInt(iconEl.style.top), moved: false };
+    };
     iconEl.innerHTML = `<span class="${app.color}" style="font-style:normal;font-size:28px;">${iconEmoji(app.icon)}</span><span>${app.title}</span>`;
     container.appendChild(iconEl);
   });
 }
 
+document.addEventListener('mousemove', e => {
+  if (!iconDrag) return;
+  const dx = e.clientX - iconDrag.startX, dy = e.clientY - iconDrag.startY;
+  if (!iconDrag.moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+  iconDrag.moved = true;
+  iconDrag.el.style.left = Math.max(0, Math.min(window.innerWidth - 90, iconDrag.left + dx)) + 'px';
+  iconDrag.el.style.top = Math.max(0, Math.min(window.innerHeight - 125, iconDrag.top + dy)) + 'px';
+});
+document.addEventListener('mouseup', () => { iconDrag = null; });
 function renderStartMenuPinned() {
   const container = document.getElementById('start-pinned-apps');
   container.innerHTML = '';
@@ -494,6 +548,40 @@ window.onmousemove = (e) => {
 
 window.onmouseup = () => { dragData = null; };
 
+const browserHist = {};
+
+function browserNormalize(v) {
+  v = v.trim();
+  if (!v) return '';
+  if (/^https?:\/\//i.test(v)) return v;
+  if (v.includes('.') && !v.includes(' ')) return 'https://' + v;
+  return 'https://www.bing.com/search?q=' + encodeURIComponent(v);
+}
+
+function browserGo(id, raw, skipHistory) {
+  const url = browserNormalize(raw);
+  if (!url) return;
+  const h = browserHist[id] || (browserHist[id] = { list: [], pos: -1 });
+  if (!skipHistory) {
+    h.list = h.list.slice(0, h.pos + 1);
+    h.list.push(url);
+    h.pos = h.list.length - 1;
+  }
+  document.getElementById('ie-url-' + id).value = url;
+  document.getElementById('ie-home-' + id).style.display = 'none';
+  document.getElementById('ie-frame-' + id).src = url;
+}
+
+function browserBack(id) {
+  const h = browserHist[id];
+  if (h && h.pos > 0) { h.pos--; browserGo(id, h.list[h.pos], true); }
+}
+
+function browserForward(id) {
+  const h = browserHist[id];
+  if (h && h.pos < h.list.length - 1) { h.pos++; browserGo(id, h.list[h.pos], true); }
+}
+
 function getAppHTML(appId, id) {
   switch (appId) {
     case 'notepad':
@@ -572,21 +660,28 @@ function getAppHTML(appId, id) {
           </div>
         </div>
       `;
-    case 'browser':
+       case 'browser':
       return `
         <div class="bg-gray-200 p-1 flex items-center gap-1 border-b">
-          <button class="px-2 text-xs text-gray-600"><span class="" style="font-style:normal;">←</span></button>
-          <button class="px-2 text-xs text-gray-600"><span class="" style="font-style:normal;">→</span></button>
-          <button class="px-2 text-xs text-gray-600"><span class="" style="font-style:normal;">⟳</span></button>
-          <input type="text" value="https://www.bing.com" class="flex-1 text-xs p-1 border rounded bg-white">
+          <button class="px-2 text-xs text-gray-700 hover:bg-gray-300 rounded" onclick="browserBack('${id}')">Back</button>
+          <button class="px-2 text-xs text-gray-700 hover:bg-gray-300 rounded" onclick="browserForward('${id}')">Forward</button>
+          <input type="text" id="ie-url-${id}" value="https://www.bing.com" style="user-select:text"
+            onkeydown="if(event.key==='Enter') browserGo('${id}', this.value)"
+            class="flex-1 text-xs p-1 border rounded bg-white">
+          <button class="px-2 text-xs text-gray-700 hover:bg-gray-300 rounded" onclick="browserGo('${id}', document.getElementById('ie-url-${id}').value)">Go</button>
+          <button class="px-2 text-xs text-gray-700 hover:bg-gray-300 rounded" onclick="window.open(document.getElementById('ie-url-${id}').value, '_blank')">Open in tab</button>
         </div>
-        <div class="flex-1 bg-white p-6 flex flex-col items-center justify-center text-center">
-          <h1 class="text-3xl font-bold text-blue-600 mb-2">Bing</h1>
-          <div class="w-full max-w-md flex border rounded shadow-sm overflow-hidden mb-4">
-            <input type="text" placeholder="Search the web..." class="flex-1 p-2 text-xs outline-none">
-            <button class="bg-blue-500 text-white px-4 text-xs">Search</button>
+        <div class="flex-1 bg-white relative">
+          <iframe id="ie-frame-${id}" class="absolute inset-0 w-full h-full border-0" src="about:blank"></iframe>
+          <div id="ie-home-${id}" class="absolute inset-0 bg-white p-6 flex flex-col items-center justify-center text-center">
+            <h1 class="text-3xl font-bold text-blue-600 mb-2">Bing</h1>
+            <div class="w-full max-w-md flex border rounded shadow-sm overflow-hidden mb-4">
+              <input type="text" id="ie-q-${id}" placeholder="Search the web..." style="user-select:text"
+                onkeydown="if(event.key==='Enter') browserGo('${id}', this.value)" class="flex-1 p-2 text-xs outline-none">
+              <button class="bg-blue-500 text-white px-4 text-xs" onclick="browserGo('${id}', document.getElementById('ie-q-${id}').value)">Search</button>
+            </div>
+            <div class="text-xs text-gray-400">Internet Explorer 8 Simulation</div>
           </div>
-          <div class="text-xs text-gray-400">Internet Explorer 8 Simulation</div>
         </div>
       `;
     case 'computer':
@@ -783,6 +878,12 @@ window.onload = () => {
   setInterval(updateClock, 1000);
   playSFX('startup');
 };
+
+document.addEventListener('mousedown', e => {
+  if (e.target.closest('.aero-titlebar, .resize-handle')) document.body.classList.add('dragging');
+});
+document.addEventListener('mouseup', () => document.body.classList.remove('dragging'));
+
 </script>
 </body>
 </html>
