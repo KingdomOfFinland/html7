@@ -203,7 +203,7 @@ body.dragging iframe { pointer-events: none; }
     <div class="start-right">
       <div class="flex items-center gap-2 p-1.5 mb-2 border-b border-blue-200">
         <div class="w-10 h-10 rounded bg-gradient-to-tr from-blue-500 to-indigo-300 border border-white shadow flex items-center justify-center text-white text-lg font-bold">7</div>
-        <span class="font-bold text-xs text-blue-900">User Admin</span>
+        <span class="font-bold text-xs text-blue-900">User</span>
       </div>
       <div class="start-item" onclick="openApp('explorer', 'Documents')"><span class="text-yellow-500" style="font-style:normal;">📁</span> Documents</div>
       <div class="start-item" onclick="openApp('explorer', 'Pictures')"><span class="text-blue-500" style="font-style:normal;">🖼️</span> Pictures</div>
@@ -265,6 +265,9 @@ body.dragging iframe { pointer-events: none; }
 </div>
 
 <script>
+    
+const PROXY = 'https://white-bread-2ecc.leokoponen567.workers.dev/';
+    
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 let audioCtx = null;
 
@@ -553,6 +556,7 @@ const browserHist = {};
 function browserNormalize(v) {
   v = v.trim();
   if (!v) return '';
+  if (/^yt /i.test(v)) return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(v.slice(3));
   if (/^https?:\/\//i.test(v)) return v;
   if (v.includes('.') && !v.includes(' ')) return 'https://' + v;
   return 'https://www.bing.com/search?q=' + encodeURIComponent(v);
@@ -569,7 +573,7 @@ function browserGo(id, raw, skipHistory) {
   }
   document.getElementById('ie-url-' + id).value = url;
   document.getElementById('ie-home-' + id).style.display = 'none';
-  document.getElementById('ie-frame-' + id).src = url;
+  document.getElementById('ie-frame-' + id).src = PROXY ? PROXY + '?url=' + encodeURIComponent(url) : url;
 }
 
 function browserBack(id) {
@@ -696,6 +700,8 @@ function getAppHTML(appId, id) {
             <div class="font-bold text-blue-900">Favorites</div>
             <div class="pl-2 cursor-pointer hover:text-blue-600" onclick="openApp('documents')"><span class="text-yellow-500" style="font-style:normal;">📁</span> Documents</div>
             <div class="pl-2 cursor-pointer hover:text-blue-600" onclick="openApp('computer')"><span class="text-gray-500" style="font-style:normal;">🖥️</span> Computer</div>
+            
+            
           </div>
           <div class="flex-1 p-4 grid grid-cols-3 gap-4 auto-rows-max">
             ${appId === 'computer' ? `
