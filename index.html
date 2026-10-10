@@ -210,6 +210,7 @@ body.dragging iframe { pointer-events: none; }
       <div class="start-item" onclick="openApp('explorer', 'Music')"><span class="text-purple-500" style="font-style:normal;">🎵</span> Music</div>
       <div class="border-t border-blue-200 my-1"></div>
       <div class="start-item" onclick="openApp('explorer', 'Computer')"><span class="text-gray-600" style="font-style:normal;">🖥️</span> Computer</div>
+      <div class="start-item" onclick="openApp('run');toggleStartMenu(false)"><span class="text-gray-700" style="font-style:normal;">🏃</span> Run...</div>
       <div class="start-item" onclick="openApp('control-panel')"><span class="text-gray-700" style="font-style:normal;">🎚️</span> Control Panel</div>
       <div class="mt-auto pt-2 flex justify-end">
         <button onclick="playSFX('shutdown'); setTimeout(() => alert('Windows is shutting down...'), 800)" class="px-3 py-1 bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 text-white rounded text-xs font-semibold shadow border border-blue-300 flex items-center gap-1">
@@ -349,7 +350,7 @@ let iconDrag = null;
 function renderDesktopIcons() {
   const container = document.getElementById('desktop-icons');
   container.innerHTML = '';
-  Object.keys(APPS).forEach((id, i) => {
+  Object.keys(APPS).filter(k=>!APPS[k].hidden).forEach((id, i) => {
     const app = APPS[id];
     const iconEl = document.createElement('div');
     iconEl.className = 'desktop-icon';
@@ -383,7 +384,7 @@ document.addEventListener('mouseup', () => { iconDrag = null; });
 function renderStartMenuPinned() {
   const container = document.getElementById('start-pinned-apps');
   container.innerHTML = '';
-  Object.keys(APPS).forEach(id => {
+  Object.keys(APPS).filter(k=>!APPS[k].hidden).forEach(id => {
     const app = APPS[id];
     const item = document.createElement('div');
     item.className = 'start-item';
@@ -395,7 +396,7 @@ function renderStartMenuPinned() {
 
 function openApp(appId, customTitle = null) {
   playSFX('click');
-  const id = appId + (customTitle ? '_' + customTitle.replace(/\s+/g, '') : '');
+  const id = appId + (customTitle ? '_' + customTitle.replace(/[^\w-]+/g, '_') : '');
   if (windows[id]) {
     if (windows[id].minimized) restoreWindow(id);
     bringToFront(id);
@@ -410,8 +411,9 @@ function openApp(appId, customTitle = null) {
   win.className = 'aero-window aero-glass';
   win.style.width = `${baseApp.width}px`;
   win.style.height = `${baseApp.height}px`;
-  win.style.left = `${60 + Object.keys(windows).length * 25}px`;
-  win.style.top = `${40 + Object.keys(windows).length * 25}px`;
+  const _n = Object.keys(windows).length;
+  win.style.left = baseApp.pos === 'bl' ? '8px' : `${60 + _n * 25}px`;
+  win.style.top = baseApp.pos === 'bl' ? `${innerHeight - baseApp.height - 48}px` : `${40 + _n * 25}px`;
   win.style.zIndex = ++zIndexCounter;
 
   win.innerHTML = `
@@ -434,6 +436,7 @@ function openApp(appId, customTitle = null) {
     <div class="resize-handle resize-br" onmousedown="startResize(event, '${id}', 'br')"></div>
   `;
 
+  if (baseApp.fixed) win.querySelectorAll('.resize-handle,.win-btn-max,.win-btn-min').forEach(el => el.remove());
   win.onmousedown = () => bringToFront(id);
   document.getElementById('desktop').appendChild(win);
 
@@ -876,6 +879,513 @@ window.onclick = (e) => {
     document.querySelectorAll('.sys-tray-popup').forEach(p => p.style.display = 'none');
   }
 };
+
+/* ===== html7 additions: Run, Task Manager, winver, regedit, cmd ===== */
+Object.assign(ICON_EMOJI,{'x-run':'🏃','x-tm':'📊','x-reg':'🧩','x-cmd':'⬛','x-win':'🪟','x-sys':'💻'});
+Object.assign(APPS,{
+  sysinfo:{title:'System',icon:'x-sys',color:'',width:480,height:400,hidden:1},
+  run:{title:'Run',icon:'x-run',color:'',width:400,height:200,hidden:1,fixed:1,pos:'bl'},
+  winver:{title:'About Windows',icon:'x-win',color:'',width:420,height:330,hidden:1,fixed:1},
+  taskmgr:{title:'Windows Task Manager',icon:'x-tm',color:'',width:520,height:560,hidden:1},
+  regedit:{title:'Registry Editor',icon:'x-reg',color:'',width:700,height:440,hidden:1},
+  cmd:{title:'Command Prompt',icon:'x-cmd',color:'',width:620,height:360,hidden:1}
+});
+const BTN='px-4 py-1 border border-gray-500 rounded bg-gradient-to-b from-white to-gray-200 hover:from-blue-50';
+const pidOf=w=>w.pid||(w.pid=1000+Math.floor(Math.random()*9000));
+
+/* ---- dialogs ---- */
+function dlg(title,body,buttons){
+  const d=document.createElement('div');
+  d.className='aero-window aero-glass';
+  d.style.cssText=`width:360px;left:${innerWidth/2-180}px;top:${innerHeight/2-110}px;z-index:99999`;
+  d.innerHTML=`<div class="aero-titlebar aero-titlebar-active"><span class="text-xs font-semibold text-gray-800 truncate">${title}</span><button class="win-btn win-btn-close dlg-x"><span style="font-style:normal;">✖️</span></button></div><div class="bg-white/95 p-3 text-xs">${body}<div class="flex justify-end gap-2 mt-3 dlg-btns"></div></div>`;
+  buttons.forEach(([l,f])=>{const b=document.createElement('button');b.textContent=l;b.className=BTN;b.onclick=()=>{if(f(d)!==false)d.remove();};d.querySelector('.dlg-btns').appendChild(b);});
+  d.querySelector('.dlg-x').onclick=()=>d.remove();
+  d.querySelector('.aero-titlebar').onmousedown=e=>{if(e.target.closest('button'))return;const ox=e.clientX-d.offsetLeft,oy=e.clientY-d.offsetTop,mv=ev=>{d.style.left=ev.clientX-ox+'px';d.style.top=Math.max(0,ev.clientY-oy)+'px';},up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);};
+  document.body.appendChild(d);
+  const i=d.querySelector('input');if(i){i.focus();i.select();i.onkeydown=e=>{if(e.key==='Enter')d.querySelector('.dlg-btns button').click();};}
+  return d;
+}
+const msgBox=(t,m)=>dlg(t,`<div class="flex gap-3 items-start"><span style="font-size:28px">⚠️</span><div>${m}</div></div>`,[['OK',()=>{}]]);
+const ask=(title,label,val,cb)=>dlg(title,`${label}<br><input value="${val}" class="w-full border border-gray-400 p-1 mt-1 outline-none" style="user-select:text">`,[['OK',d=>{cb(d.querySelector('input').value.replace(/['"\\<>]/g,''));}],['Cancel',()=>{}]]);
+
+/* ---- Run ---- */
+let runHistory=[];try{runHistory=JSON.parse(localStorage.getItem('html7_run')||'[]');}catch(e){}
+const RUN_MAP={notepad:'notepad',calc:'calculator',mspaint:'paint',winmine:'minesweeper',wmplayer:'mediaplayer',iexplore:'browser',control:'control-panel',explorer:'computer',computer:'computer',documents:'documents',cmd:'cmd',taskmgr:'taskmgr',regedit:'regedit',winver:'winver',run:'run',sysdm:'sysinfo',msinfo32:'sysinfo',dxdiag:'sysinfo'};
+function runCommand(t){
+  const c=t.trim().replace(/^"|"$/g,'');if(!c)return;
+  const k=c.toLowerCase().replace(/\.(exe|msc|cpl)$/,'');
+  try{runHistory=[c,...runHistory.filter(x=>x!==c)].slice(0,10);localStorage.setItem('html7_run',JSON.stringify(runHistory));}catch(e){}
+  if(RUN_MAP[k])return openApp(RUN_MAP[k]);
+  if(k==='shutdown'||k==='logoff'){playSFX('shutdown');setTimeout(()=>alert('Windows is shutting down...'),800);return;}
+  if(/^(https?:\/\/|www\.)/i.test(c)||/^[^\s\/]+\.[a-z]{2,}(\/\S*)?$/i.test(c)){openApp('browser');browserGo('browser',c);return;}
+  {const cp=/^[a-z]:/i.test(c)&&canon(c.replace(/\\+$/,''));if(cp){const n=fsGet(cp);return n.t==='d'?exOpen(cp):openFile(cp);}}
+  msgBox(c,`Windows cannot find '${c}'. Make sure you typed the name correctly, and then try again.`);
+}
+function runOK(id){const v=document.getElementById('run-in-'+id).value;closeWindow(id);runCommand(v);}
+function runHTML(id){return `<div class="p-3 text-xs flex flex-col gap-3 bg-gray-100 h-full">
+<div class="flex gap-3 items-center"><span style="font-size:32px">🏃</span><span>Type the name of a program, folder, document, or Internet resource, and Windows will open it for you.</span></div>
+<div class="flex items-center gap-2"><label>Open:</label><input id="run-in-${id}" list="run-hist-${id}" class="flex-1 border border-gray-400 p-1 outline-none" autocomplete="off" style="user-select:text"><datalist id="run-hist-${id}">${runHistory.map(h=>`<option value="${h.replace(/"/g,'')}">`).join('')}</datalist></div>
+<div class="flex justify-end gap-2 mt-auto"><button class="${BTN}" onclick="runOK('${id}')">OK</button><button class="${BTN}" onclick="closeWindow('${id}')">Cancel</button><button class="${BTN}" onclick="openApp('computer')">Browse...</button></div></div>`;}
+
+/* ---- winver ---- */
+function winverHTML(id){return `<div class="p-4 text-xs bg-white h-full flex flex-col gap-2">
+<div class="flex items-center gap-3 border-b pb-3"><div class="grid grid-cols-2 gap-0.5 w-10 h-10"><i style="background:#e8452c"></i><i style="background:#6cb33f"></i><i style="background:#2f8fdd"></i><i style="background:#f5b800"></i></div><div class="text-2xl font-light text-blue-900">Windows<b> 7</b></div></div>
+<div>Microsoft Windows<br>Version 6.1 (Build 7601: Service Pack 1)<br>Copyright © 2009 Microsoft Corporation. All rights reserved.</div>
+<div>The Windows 7 Ultimate operating system and its user interface are protected by trademark and other pending or existing intellectual property rights.</div>
+<div>This product is licensed under the Microsoft Software License Terms to:<br><b class="ml-4">User</b></div>
+<div class="mt-auto flex justify-end"><button class="${BTN}" onclick="closeWindow('${id}')">OK</button></div></div>`;}
+
+/* ---- Task Manager ---- */
+const tm={},cpuH=[],memH=[],netH=[];
+const EXE={computer:'explorer.exe',documents:'explorer.exe',trash:'explorer.exe',notepad:'notepad.exe',calculator:'calc.exe',paint:'mspaint.exe',minesweeper:'winmine.exe',mediaplayer:'wmplayer.exe',browser:'iexplore.exe','control-panel':'control.exe',run:'explorer.exe',winver:'winver.exe',taskmgr:'taskmgr.exe',regedit:'regedit.exe',cmd:'cmd.exe',sysinfo:'rundll32.exe'};
+const DESC={'explorer.exe':'Windows Explorer','notepad.exe':'Notepad','calc.exe':'Windows Calculator','mspaint.exe':'Paint','winmine.exe':'Minesweeper','wmplayer.exe':'Windows Media Player','iexplore.exe':'Internet Explorer','control.exe':'Control Panel','winver.exe':'About Windows','taskmgr.exe':'Windows Task Manager','regedit.exe':'Registry Editor','cmd.exe':'Windows Command Processor','System Idle Process':'Percentage of time the processor is idle','System':'NT Kernel & System','smss.exe':'Windows Session Manager','csrss.exe':'Client Server Runtime Process','wininit.exe':'Windows Start-Up Application','services.exe':'Services and Controller app','lsass.exe':'Local Security Authority Process','winlogon.exe':'Windows Logon Application','svchost.exe':'Host Process for Windows Services','spoolsv.exe':'Spooler SubSystem App','audiodg.exe':'Windows Audio Device Graph Isolation','dwm.exe':'Desktop Window Manager'};
+const SYS=[['System Idle Process',0,'SYSTEM'],['System',4,'SYSTEM'],['smss.exe',372,'SYSTEM'],['csrss.exe',468,'SYSTEM'],['wininit.exe',520,'SYSTEM'],['winlogon.exe',560,'SYSTEM'],['services.exe',612,'SYSTEM'],['lsass.exe',628,'SYSTEM'],['svchost.exe',724,'SYSTEM'],['svchost.exe',3080,'LOCAL SERVICE'],['spoolsv.exe',1040,'SYSTEM'],['audiodg.exe',1090,'LOCAL SERVICE'],['dwm.exe',1180,'User'],['explorer.exe',1204,'User']];
+const SVCS=[['Audiosrv',1090,'Windows Audio','Running'],['BITS','','Background Intelligent Transfer Service','Stopped'],['Dhcp',724,'DHCP Client','Running'],['Dnscache',724,'DNS Client','Running'],['EventLog',724,'Windows Event Log','Running'],['Spooler',1040,'Print Spooler','Running'],['Themes',724,'Themes','Running'],['wuauserv','','Windows Update','Stopped']];
+const TM_TABS=['Applications','Processes','Services','Performance','Networking','Users'];
+function tmHTML(id){return `<div class="flex flex-col h-full text-xs" style="background:#f0f0f0">
+<div class="flex gap-3 px-2 py-0.5 border-b bg-white relative">${[['File',`tmFile('${id}')`],['Options',''],['View',''],['Help','']].map(([l,f])=>`<span class="px-1 hover:bg-blue-100 cursor-default" onclick="${f}">${l}</span>`).join('')}</div>
+<div class="flex gap-0.5 px-2 pt-2">${TM_TABS.map((t,i)=>`<button id="tm-t${i}-${id}" onclick="tmTab('${id}',${i})" class="px-2 py-1 border border-b-0 border-gray-400 rounded-t" style="background:#fff">${t}</button>`).join('')}</div>
+<div class="flex-1 mx-2 mb-1 border border-gray-400 bg-white overflow-auto" id="tm-main-${id}"></div>
+<div class="flex items-center gap-2 px-2 pb-2"><label id="tm-all-${id}" class="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked onchange="tm['${id}'].all=this.checked;tmRefresh('${id}')">Show processes from all users</label><span class="flex-1"></span><span id="tm-btns-${id}" class="flex gap-2"></span></div>
+<div class="flex border-t border-gray-400" id="tm-stat-${id}"></div></div>`;}
+function tmFile(id){const bar=document.getElementById('tm-main-'+id).parentElement.firstElementChild;let m=bar.querySelector('.tm-menu');if(m){m.remove();return;}
+  m=document.createElement('div');m.className='tm-menu';m.style.cssText='position:absolute;left:4px;top:100%;background:#f5f5f5;border:1px solid #999;z-index:50;padding:2px 0;box-shadow:2px 2px 4px #0004';
+  m.innerHTML=`<div class="px-6 py-1 hover:bg-blue-200 cursor-pointer whitespace-nowrap" onclick="openApp('run')">New Task (Run...)</div><div class="px-6 py-1 hover:bg-blue-200 cursor-pointer whitespace-nowrap" onclick="closeWindow('${id}')">Exit Task Manager</div>`;
+  bar.appendChild(m);setTimeout(()=>document.addEventListener('click',()=>m.remove(),{once:true}),0);}
+const tmTable=(id,heads,rows)=>`<table class="w-full"><thead><tr class="text-left" style="background:linear-gradient(#fff,#ececec)">${heads.map(h=>`<th class="px-2 py-0.5 border-r border-gray-300 font-normal whitespace-nowrap">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(([k,...c])=>`<tr onmousedown="tm['${id}'].sel='${k}';tmRefresh('${id}')" style="${tm[id].sel===k?'background:#3399ff;color:#fff':''}">${c.map(x=>`<td class="px-2 py-0.5 whitespace-nowrap">${x}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+function tmDraw(cv,data,color){const c=cv.getContext('2d'),w=cv.width,h=cv.height;c.fillStyle='#000';c.fillRect(0,0,w,h);c.strokeStyle='#0a4';for(let x=0;x<w;x+=20){c.beginPath();c.moveTo(x,0);c.lineTo(x,h);c.stroke();}for(let y=0;y<h;y+=h/5){c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke();}c.strokeStyle=color;c.beginPath();data.forEach((v,i)=>{const x=w-(data.length-1-i)*(w/59),y=h-v/100*h;i?c.lineTo(x,y):c.moveTo(x,y);});c.stroke();}
+const T0=Date.now(),used_cpu=h=>h[h.length-1]||0;
+const TOT=Math.round((navigator.deviceMemory||4)*1024),CORES=navigator.hardwareConcurrency||2;
+const coreH=Array.from({length:Math.min(CORES,16)},()=>[]);
+const esc=x=>String(x).replace(/[<>&"']/g,'');
+function gpuName(){try{const g=document.createElement('canvas').getContext('webgl'),e=g.getExtension('WEBGL_debug_renderer_info');if(!e)return 'Unknown';const n=g.getParameter(e.UNMASKED_RENDERER_WEBGL),m=n.match(/ANGLE \([^,]*, (.*?)(?: Direct3D| \(|,|\))/);return m?m[1]:n;}catch(e){return 'Unknown';}}
+function tmCores(cv){const c=cv.getContext('2d'),n=coreH.length,cols=n<3?n:Math.ceil(n/2),rows=n<3?1:2,pw=cv.width/cols,ph=cv.height/rows;c.fillStyle='#000';c.fillRect(0,0,cv.width,cv.height);
+  coreH.forEach((d,i)=>{const x0=(i%cols)*pw,y0=Math.floor(i/cols)*ph;c.strokeStyle='#0a4';c.strokeRect(x0+.5,y0+.5,pw-1,ph-1);for(let x=x0;x<x0+pw;x+=12){c.beginPath();c.moveTo(x,y0);c.lineTo(x,y0+ph);c.stroke();}for(let k=1;k<5;k++){c.beginPath();c.moveTo(x0,y0+ph*k/5);c.lineTo(x0+pw,y0+ph*k/5);c.stroke();}c.strokeStyle='#3f3';c.beginPath();d.forEach((v,j)=>{const x=x0+pw-(d.length-1-j)*(pw/59),y=y0+ph-v/100*ph;j?c.lineTo(x,y):c.moveTo(x,y);});c.stroke();});}
+function sysinfoHTML(id){const nav=navigator,ud=nav.userAgentData,row=(a,b)=>`<div class="flex gap-2 py-0.5"><span class="w-36 shrink-0 text-gray-600">${a}</span><span style="user-select:text">${esc(b)}</span></div>`;
+  const br=((ud&&ud.brands)||[]).filter(b=>!/Not/i.test(b.brand)).map(b=>b.brand+' '+b.version).join(', ')||nav.userAgent;
+  return `<div class="p-4 text-xs bg-white h-full overflow-auto"><div class="text-base text-blue-900 mb-2">View basic information about your computer</div>
+<div class="font-bold text-blue-900 border-b mb-1">Windows edition</div>${row('Edition','Windows 7 Ultimate')}${row('Service pack','Service Pack 1')}
+<div class="font-bold text-blue-900 border-b mt-3 mb-1">System</div>${row('Processor',CORES+' logical processors')}${row('Installed memory (RAM)',(TOT/1024).toFixed(2)+' GB'+(nav.deviceMemory?' (approx.)':' (estimated)'))}${row('Platform',(ud&&ud.platform)||nav.platform||'Unknown')}
+<div class="font-bold text-blue-900 border-b mt-3 mb-1">Display and browser</div>${row('Graphics',gpuName())}${row('Screen',screen.width+' x '+screen.height+' @ '+devicePixelRatio+'x')}${row('Browser',br)}</div>`;}
+
+function tmGauge(cv,pct,label){const c=cv.getContext('2d'),w=cv.width,h=cv.height,rows=Math.floor((h-22)/3),lit=Math.round(pct/100*rows);c.fillStyle='#000';c.fillRect(0,0,w,h);for(let r=0;r<rows;r++){c.fillStyle=r>=rows-lit?'#3f3':'#0a3a14';c.fillRect(12,3+r*3,w-24,2);}c.fillStyle='#3f3';c.font='bold 12px Segoe UI, sans-serif';c.textAlign='center';c.fillText(label,w/2,h-5);}
+function tmRefresh(id){
+  const s=tm[id],main=document.getElementById('tm-main-'+id);if(!main)return;
+  const wins=Object.values(windows);
+  const all=[...SYS.map(([n,p,u])=>({k:'p'+p,name:n,pid:p,user:u,mem:p?1000+(p*37%20000):24,sys:1})),...wins.map(w=>({k:w.id,name:EXE[w.appId]||'app.exe',pid:pidOf(w),user:'User',mem:w.mem||(w.mem=8000+Math.floor(Math.random()*30000))}))];
+  all.forEach(p=>p.cpu=p.pid===0?0:Math.floor(Math.random()*(p.sys?2:3)));
+  const used=all.reduce((a,p)=>a+p.cpu,0);all[0].cpu=100-used;
+  const mem=Math.min(95,35+wins.length*3+Math.floor(Math.random()*2));
+  cpuH.push(used);coreH.forEach(a=>{a.push(Math.max(0,Math.min(100,used+Math.floor(Math.random()*21-10))));if(a.length>60)a.shift();});memH.push(mem);netH.push(Math.floor(Math.random()*6));if(cpuH.length>60){cpuH.shift();memH.shift();netH.shift();}
+  TM_TABS.forEach((_,i)=>{const b=document.getElementById(`tm-t${i}-${id}`);b.style.fontWeight=s.tab===i?'700':'400';b.style.paddingBottom=s.tab===i?'6px':'4px';});
+  const sc=main.scrollTop,T=s.tab,cv=(n,t)=>`${t}<canvas id="tm-${n}-${id}" width="440" height="110" class="w-full mb-2"></canvas>`;
+  if(T===0)main.innerHTML=tmTable(id,['Task','Status'],wins.map(w=>[w.id,w.title,w.minimized?'Minimized':'Running']));
+  else if(T===1){const rows=all.filter(p=>s.all||p.user==='User').sort((a,b)=>b.mem-a.mem);
+    main.innerHTML=tmTable(id,['Image Name','PID','User Name','CPU','Memory (Private Working Set)','Description'],rows.map(p=>[p.k,p.name,p.pid,p.user,String(p.cpu).padStart(2,'0'),p.mem.toLocaleString()+' K',DESC[p.name]||p.name]));}
+  else if(T===2)main.innerHTML=tmTable(id,['Name','PID','Description','Status'],SVCS.map(r=>['s'+r[0],...r]));
+  else if(T===3){
+    const used=Math.round(TOT*mem/100),paged=43+(used%3),nonp=24,up=Math.floor((Date.now()-T0)/1000),f=n=>String(n).padStart(2,'0');
+    const kv=(a,b)=>`<div class="flex justify-between"><span>${a}</span><span>${b}</span></div>`;
+    const box=(t,inner,st='')=>`<fieldset class="border border-gray-400 px-2 pb-1" style="${st}"><legend class="px-1">${t}</legend>${inner}</fieldset>`;
+    main.innerHTML=`<div class="p-2" style="background:#f0f0f0;min-height:100%">
+<div style="display:grid;grid-template-columns:100px 1fr;gap:8px">
+${box('CPU Usage',`<canvas id="tm-gc-${id}" width="84" height="84" style="width:84px;height:84px"></canvas>`)}
+${box('CPU Usage History',`<canvas id="tm-c-${id}" width="360" height="84" style="width:100%;height:84px"></canvas>`)}
+${box('Memory',`<canvas id="tm-gm-${id}" width="84" height="84" style="width:84px;height:84px"></canvas>`)}
+${box('Physical Memory Usage History',`<canvas id="tm-m-${id}" width="360" height="84" style="width:100%;height:84px"></canvas>`)}
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+<div class="flex flex-col gap-2">${box('Physical Memory (MB)',kv('Total',TOT)+kv('Cached',Math.round(TOT*.25))+kv('Free',Math.max(0,TOT-used)))}${box('Kernel Memory (MB)',kv('Total',paged+nonp)+kv('Paged',paged)+kv('Nonpaged',nonp))}</div>
+<div class="flex flex-col gap-3">${box('System',kv('Handles',(13890+wins.length*40).toLocaleString('en-US'))+kv('Threads',590+wins.length*5)+kv('Processes',all.length)+kv('Up Time',`${Math.floor(up/3600)}:${f(Math.floor(up/60)%60)}:${f(up%60)}`)+kv('Page File',`${Math.round(used*1.09)}M / 2311M`))}
+<button class="${BTN} self-center" onclick="msgBox('Resource Monitor','Resource Monitor is not available in html7 yet.')">🛡️ Resource Monitor...</button></div></div></div>`;
+    tmGauge(document.getElementById('tm-gc-'+id),used_cpu(cpuH),used_cpu(cpuH)+' %');
+    tmGauge(document.getElementById('tm-gm-'+id),mem,used+' MB');
+    tmCores(document.getElementById('tm-c-'+id));tmDraw(document.getElementById('tm-m-'+id),memH,'#39f');}
+  else if(T===4){main.innerHTML=`<div class="p-2">${cv('n','Local Area Connection')}</div>`+tmTable(id,['Adapter Name','Network Utilization','Link Speed','State'],[['n','Local Area Connection',(netH[netH.length-1]/10).toFixed(2)+' %','100 Mbps','Connected']]);tmDraw(document.getElementById('tm-n-'+id),netH.map(v=>v*10),'#fd0');}
+  else main.innerHTML=tmTable(id,['User','ID','Status','Client Name','Session'],[['u','User',1,'Active','','Console']]);
+  main.scrollTop=sc;
+  const cell=t=>`<span class="px-2 py-1 border-r border-gray-400" style="width:33%">${t}</span>`;
+  document.getElementById('tm-stat-'+id).innerHTML=cell('Processes: '+all.length)+cell('CPU Usage: '+used+'%')+cell('Physical Memory: '+mem+'%');
+}
+function tmTab(id,i){const s=tm[id];s.tab=i;s.sel=null;
+  document.getElementById('tm-all-'+id).style.visibility=i===1?'visible':'hidden';
+  document.getElementById('tm-btns-'+id).innerHTML=i===0?`<button class="${BTN}" onclick="tmEnd('${id}')">End Task</button><button class="${BTN}" onclick="tmSwitch('${id}')">Switch To</button><button class="${BTN}" onclick="openApp('run')">New Task...</button>`:i===1?`<button class="${BTN}" onclick="tmEnd('${id}')">End Process</button>`:'';
+  tmRefresh(id);}
+function tmSwitch(id){const w=windows[tm[id].sel];if(w){if(w.minimized)restoreWindow(w.id);bringToFront(w.id);}}
+function tmEnd(id){const k=tm[id].sel;if(!k)return;
+  const kill=()=>{if(windows[k]){closeWindow(k);tm[id].sel=null;}else msgBox('Windows Task Manager','Unable to Terminate Process<br><br>Access is denied.');if(document.getElementById('tm-main-'+id))tmRefresh(id);};
+  if(tm[id].tab===1)dlg('Task Manager Warning','<b>WARNING:</b> Terminating a process can cause undesired results including loss of data and system instability. The process will be terminated without being given the chance to save its state or data. Are you sure you want to continue?',[['End process',kill],['Cancel',()=>{}]]);
+  else kill();}
+
+/* ---- Registry Editor (saved in localStorage; HKCU\Software\html7 drives the desktop) ---- */
+const HK='HKEY_CURRENT_USER\\Software\\html7',E=()=>({k:{},v:{}});
+const REG_DEF={HKEY_CLASSES_ROOT:E(),HKEY_CURRENT_USER:{k:{Software:{k:{html7:{k:{},v:{BackgroundColor:['REG_SZ','#174b88'],Sounds:['REG_DWORD',1]}}},v:{}},'Control Panel':E()},v:{}},HKEY_LOCAL_MACHINE:{k:{SOFTWARE:{k:{Microsoft:{k:{'Windows NT':{k:{CurrentVersion:{k:{},v:{ProductName:['REG_SZ','Windows 7 Ultimate'],CurrentBuild:['REG_SZ','7601'],RegisteredOwner:['REG_SZ','User']}}},v:{}}},v:{}}},v:{}}},v:{}},HKEY_USERS:E(),HKEY_CURRENT_CONFIG:E()};
+let REG=null;try{REG=JSON.parse(localStorage.getItem('html7_reg'));}catch(e){}REG=REG||JSON.parse(JSON.stringify(REG_DEF));
+const regSave=()=>{try{localStorage.setItem('html7_reg',JSON.stringify(REG));}catch(e){}};
+const regKey=p=>p.split('\\').reduce((n,x)=>n&&n.k[x],{k:REG});
+const regGet=(p,name,def)=>{const n=regKey(p);return n&&n.v[name]?n.v[name][1]:def;};
+const _theme=changeTheme,_sfx=playSFX;
+function applyRegistry(){const c=regGet(HK,'BackgroundColor');if(c)_theme(c);}
+changeTheme=c=>{const n=regKey(HK);if(n){n.v.BackgroundColor=['REG_SZ',c];regSave();}_theme(c);};
+playSFX=t=>{if(Number(regGet(HK,'Sounds',1))===0)return;_sfx(t);};
+window.addEventListener('load',applyRegistry);
+const rg={};
+function regHTML(id){const b=(l,f)=>`<button class="px-2 py-0.5 border rounded bg-white hover:bg-blue-50" onclick="${f}">${l}</button>`;
+return `<div class="flex flex-col h-full text-xs"><div class="flex gap-1 p-1 bg-gray-100 border-b">${b('New Key',`regNewKey('${id}')`)}${b('New String',`regNewVal('${id}','REG_SZ')`)}${b('New DWORD',`regNewVal('${id}','REG_DWORD')`)}${b('Modify',`regEdit('${id}')`)}${b('Delete',`regDel('${id}')`)}</div>
+<div class="flex flex-1 overflow-hidden"><div id="rg-tree-${id}" class="w-1/3 overflow-auto border-r p-1 bg-white"></div><div id="rg-vals-${id}" class="flex-1 overflow-auto bg-white"></div></div>
+<div id="rg-stat-${id}" class="border-t px-2 py-0.5 bg-gray-100 truncate"></div></div>`;}
+function regRender(id){const s=rg[id];
+  const row=(d,p,label,has,o)=>`<div style="padding-left:${d*14}px" class="whitespace-nowrap cursor-pointer ${s.path===p?'bg-blue-500 text-white':''}" onclick="regSel('${id}','${p}')">${has?(o?'▾':'▸'):'&nbsp;&nbsp;'} 📁 ${label}</div>`;
+  const walk=(node,path,d)=>Object.keys(node.k).sort().map(name=>{const p=path?path+'\\'+name:name,n=node.k[name],o=s.open[p];return row(d,p,name,Object.keys(n.k).length,o)+(o?walk(n,p,d+1):'');}).join('');
+  document.getElementById('rg-tree-'+id).innerHTML=`<div>🖥️ Computer</div>`+walk({k:REG},'',1);
+  const n=regKey(s.path)||E(),names=Object.keys(n.v);
+  const disp=v=>v[0]==='REG_DWORD'?`0x${(Number(v[1])>>>0).toString(16).padStart(8,'0')} (${Number(v[1])})`:v[1];
+  const rows=[['',' (Default)','REG_SZ','(value not set)'],...names.map(k=>[k,k,n.v[k][0],disp(n.v[k])])];
+  document.getElementById('rg-vals-'+id).innerHTML=`<table class="w-full"><thead><tr class="bg-gray-100 text-left"><th class="px-2 font-normal">Name</th><th class="px-2 font-normal">Type</th><th class="px-2 font-normal">Data</th></tr></thead><tbody>${rows.map(([k,a,b,c])=>`<tr class="${k&&s.sel===k?'bg-blue-500 text-white':''}" onclick="rg['${id}'].sel='${k}';regRender('${id}')" ondblclick="regEdit('${id}')"><td class="px-2">${a}</td><td class="px-2">${b}</td><td class="px-2">${c}</td></tr>`).join('')}</tbody></table>`;
+  document.getElementById('rg-stat-'+id).textContent='Computer\\'+s.path;}
+function regSel(id,p){const s=rg[id];s.path=p;s.open[p]=!s.open[p];s.sel=null;regRender(id);}
+function regNewKey(id){const s=rg[id],n=regKey(s.path);if(!n)return;ask('New Key','Key name:','New Key #1',v=>{if(v&&!n.k[v]){n.k[v]=E();s.open[s.path]=1;regSave();regRender(id);}});}
+function regNewVal(id,t){const s=rg[id],n=regKey(s.path);if(!n)return;ask('New Value','Value name:','New Value #1',v=>{if(v){n.v[v]=[t,t==='REG_DWORD'?0:''];s.sel=v;regSave();regRender(id);regEdit(id);}});}
+function regEdit(id){const s=rg[id],n=regKey(s.path),v=n&&n.v[s.sel];if(!v)return;
+  ask('Edit '+(v[0]==='REG_DWORD'?'DWORD (32-bit) Value':'String'),`Value name: <b>${s.sel}</b><br>Value data:`,v[1],x=>{v[1]=v[0]==='REG_DWORD'?(parseInt(x)||0):x;regSave();applyRegistry();regRender(id);});}
+function regDel(id){const s=rg[id],n=regKey(s.path);if(!n)return;
+  if(s.sel&&n.v[s.sel])dlg('Confirm Value Delete','Deleting certain registry values could cause system instability. Are you sure you want to permanently delete this value?',[['Yes',()=>{delete n.v[s.sel];s.sel=null;regSave();regRender(id);}],['No',()=>{}]]);
+  else if(s.path.includes('\\'))dlg('Confirm Key Delete','Are you sure you want to permanently delete this key and all of its subkeys?',[['Yes',()=>{const i=s.path.lastIndexOf('\\'),par=regKey(s.path.slice(0,i));delete par.k[s.path.slice(i+1)];s.path=s.path.slice(0,i);regSave();regRender(id);}],['No',()=>{}]]);}
+
+/* ---- Command Prompt ---- */
+function cmdHTML(id){return `<div class="flex flex-col h-full bg-black text-gray-200 font-mono text-xs p-2 overflow-auto" id="cmd-scroll-${id}" style="user-select:text" onclick="document.getElementById('cmd-in-${id}').focus()"><div id="cmd-out-${id}" style="white-space:pre-wrap">Microsoft Windows [Version 6.1.7601]\nCopyright (c) 2009 Microsoft Corporation.  All rights reserved.\n\n</div><div class="flex"><span id="cmd-p-${id}">C:\\Users\\User&gt;</span><input id="cmd-in-${id}" class="flex-1 bg-transparent outline-none text-gray-200 font-mono text-xs" autocomplete="off" style="user-select:text"></div></div>`;}
+function cmdRun(id,line){const out=document.getElementById('cmd-out-'+id),[c,...a]=line.trim().split(/\s+/),arg=a.join(' ');let r='';
+  switch((c||'').toLowerCase()){
+    case '':break;
+    case 'help':r='Supported: help, cls, echo, ver, date, time, dir, whoami, hostname, tasklist, start <app>, shutdown, exit\n';break;
+    case 'cls':out.textContent='';return;
+    case 'echo':r=arg+'\n';break;
+    case 'ver':r='\nMicrosoft Windows [Version 6.1.7601]\n';break;
+    case 'date':r='The current date is: '+new Date().toLocaleDateString()+'\n';break;
+    case 'time':r='The current time is: '+new Date().toLocaleTimeString()+'\n';break;
+    case 'whoami':r='html7\\user\n';break;
+    case 'hostname':r='HTML7-PC\n';break;
+    case 'dir':r=' Directory of C:\\Users\\User\n\n<DIR>  Desktop\n<DIR>  Documents\n<DIR>  Music\n<DIR>  Pictures\n';break;
+    case 'tasklist':r='Image Name                PID\n========================= ======\n'+Object.values(windows).map(w=>(EXE[w.appId]||'app.exe').padEnd(25)+' '+pidOf(w)).join('\n')+'\n';break;
+    case 'start':runCommand(arg);break;
+    case 'shutdown':runCommand('shutdown');break;
+    case 'exit':closeWindow(id);return;
+    default:r=`'${c}' is not recognized as an internal or external command,\noperable program or batch file.\n`;
+  }
+  out.textContent+=r+'\n';}
+
+/* ---- hook into window manager ---- */
+const _initApp=initAppLogic;
+initAppLogic=function(appId,id){
+  _initApp(appId,id);
+  if(appId==='run'){const i=document.getElementById('run-in-'+id);i.focus();i.onkeydown=e=>{if(e.key==='Enter')runOK(id);if(e.key==='Escape')closeWindow(id);};}
+  else if(appId==='taskmgr'){tm[id]={tab:1,sel:null,all:true};tmTab(id,1);const t=setInterval(()=>{if(!windows[id])return clearInterval(t);tmRefresh(id);},1000);}
+  else if(appId==='regedit'){rg[id]={path:'HKEY_CURRENT_USER',open:{HKEY_CURRENT_USER:1},sel:null};regRender(id);}
+  else if(appId==='cmd'){const i=document.getElementById('cmd-in-'+id),o=document.getElementById('cmd-out-'+id),sc=document.getElementById('cmd-scroll-'+id);i.focus();
+    i.onkeydown=e=>{if(e.key==='Enter'){o.textContent+=(cw[id]||HOME)+'>'+i.value+'\n';cmdRun(id,i.value);i.value='';sc.scrollTop=sc.scrollHeight;}};}
+};
+const _getHTML=getAppHTML;
+getAppHTML=function(appId,id){
+  switch(appId){case 'run':return runHTML(id);case 'winver':return winverHTML(id);case 'taskmgr':return tmHTML(id);case 'regedit':return regHTML(id);case 'cmd':return cmdHTML(id);case 'sysinfo':return sysinfoHTML(id);}
+  return _getHTML(appId,id);
+};
+document.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if((e.altKey||e.metaKey)&&k==='r'){e.preventDefault();openApp('run');}
+  if((e.altKey&&k==='t')||(e.ctrlKey&&e.shiftKey&&k==='escape')){e.preventDefault();openApp('taskmgr');}
+});
+document.querySelector('.taskbar').addEventListener('contextmenu',e=>{
+  e.preventDefault();document.getElementById('tb-ctx')?.remove();
+  const m=document.createElement('div');m.id='tb-ctx';m.className='aero-glass';
+  m.style.cssText=`position:fixed;left:${e.clientX}px;top:${e.clientY-34}px;z-index:99998;background:#eef4fb;padding:2px;font-size:12px`;
+  m.innerHTML='<div class="px-4 py-1 cursor-pointer hover:bg-blue-200">Start Task Manager</div>';
+  document.body.appendChild(m);m.firstChild.onclick=()=>{openApp('taskmgr');m.remove();};
+  setTimeout(()=>document.addEventListener('click',()=>m.remove(),{once:true}),0);
+});
+
+/* ===== html7 virtual file system + Explorer ===== */
+document.head.insertAdjacentHTML('beforeend','<style>.exsel{background:#cce4f7!important;outline:1px solid #7da2ce}</style>');
+const HOME='C:\\Users\\User',BIN='C:\\$Recycle.Bin';
+const mkD=(k={})=>({t:'d',k,m:Date.now()}),mkF=(d,e='t')=>({t:'f',d,e,s:d.length,m:Date.now()});
+const svgURL=b=>'data:image/svg+xml;base64,'+btoa(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">${b}</svg>`);
+const LG=(id,stops)=>`<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">${stops.map(([o,c])=>`<stop offset="${o}" stop-color="${c}"/>`).join('')}</linearGradient>`;
+const imgs=()=>{let sd=7;const rnd=()=>(sd=sd*16807%2147483647)/2147483647;
+  const hills=(c,y,a)=>`<path d="M0 ${y} Q480 ${y-a} 960 ${y} T1920 ${y} V1080 H0Z" fill="${c}"/>`;
+  const stars=n=>Array.from({length:n},()=>`<circle cx="${rnd()*1920|0}" cy="${rnd()*640|0}" r="${(rnd()*1.8+.6).toFixed(1)}" fill="#fff" opacity="${(rnd()*.6+.3).toFixed(2)}"/>`).join('');
+  const trees=(c,y,n,h)=>Array.from({length:n},(_,i)=>{const x=i*1920/n+rnd()*30,k=h*(.7+rnd()*.6);return `<path d="M${x|0} ${y} l${k*.25|0} ${-k|0} l${k*.25|0} ${k|0}Z" fill="${c}"/>`;}).join('');
+  const waves=(y,n)=>Array.from({length:n},(_,i)=>`<path d="M0 ${y+i*60} q120 -26 240 0 t240 0 t240 0 t240 0 t240 0 t240 0 t240 0 t240 0" stroke="#fff" stroke-width="3" fill="none" opacity="${(.35-i*.05).toFixed(2)}"/>`).join('');
+  const F=u=>({t:'f',d:u,e:'u',s:Math.round(u.length*.75),m:Date.now()});
+  return {
+  'Sunset.svg':F(svgURL(`<defs>${LG('a',[[0,'#1e1b4b'],[.45,'#c2410c'],[.75,'#f97316'],[1,'#fde68a']])}</defs><rect width="1920" height="1080" fill="url(#a)"/><circle cx="1300" cy="700" r="120" fill="#fff3c4" opacity=".95"/>${hills('#3b1d4a',800,120)}${hills('#220f33',930,90)}${hills('#12071f',1030,60)}`)),
+  'Ocean.svg':F(svgURL(`<defs>${LG('s',[[0,'#38bdf8'],[1,'#e0f2fe']])}${LG('w',[[0,'#0ea5e9'],[1,'#075985']])}</defs><rect width="1920" height="1080" fill="url(#s)"/><circle cx="1500" cy="300" r="90" fill="#fffbe0"/><rect y="620" width="1920" height="460" fill="url(#w)"/>${waves(680,5)}`)),
+  'Forest.svg':F(svgURL(`<defs>${LG('s',[[0,'#bbf7d0'],[1,'#ecfccb']])}</defs><rect width="1920" height="1080" fill="url(#s)"/>${trees('#4d7c0f',720,16,380)}${trees('#166534',840,14,420)}${trees('#14532d',960,12,460)}<rect y="960" width="1920" height="120" fill="#052e16"/>`)),
+  'Night.svg':F(svgURL(`<defs>${LG('s',[[0,'#020617'],[1,'#1e3a8a']])}<radialGradient id="g"><stop offset="0" stop-color="#fef9c3"/><stop offset="1" stop-color="#fef9c3" stop-opacity="0"/></radialGradient></defs><rect width="1920" height="1080" fill="url(#s)"/>${stars(260)}<circle cx="1400" cy="260" r="200" fill="url(#g)" opacity=".5"/><circle cx="1400" cy="260" r="70" fill="#fef9c3"/>${hills('#0b1220',860,200)}${hills('#050a14',980,120)}`)),
+  'Aurora.svg':F(svgURL(`<defs>${LG('s',[[0,'#020617'],[1,'#0f172a']])}<filter id="b"><feGaussianBlur stdDeviation="40"/></filter></defs><rect width="1920" height="1080" fill="url(#s)"/>${stars(180)}<g filter="url(#b)" fill="none" stroke-width="130" opacity=".7"><path d="M-100 420 C400 200 800 600 1300 300 S1800 350 2000 250" stroke="#22c55e"/><path d="M-100 560 C500 320 900 700 1400 420 S1800 480 2000 380" stroke="#14b8a6"/><path d="M-100 300 C300 120 900 420 1300 180 S1800 220 2000 120" stroke="#8b5cf6"/></g>${hills('#030712',900,160)}`)),
+  'Aero.svg':F(svgURL(`<defs><radialGradient id="r" cx=".3" cy=".25" r=".95"><stop offset="0" stop-color="#9be7ff"/><stop offset=".45" stop-color="#1e6fd1"/><stop offset="1" stop-color="#05204f"/></radialGradient><linearGradient id="l" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs><rect width="1920" height="1080" fill="url(#r)"/><path d="M0 760 C500 520 900 980 1920 420 V1080 H0Z" fill="url(#l)" opacity=".5"/><path d="M-50 300 C400 100 1000 500 1970 150 L1970 260 C1000 640 400 240 -50 420Z" fill="url(#l)" opacity=".6"/><ellipse cx="620" cy="360" rx="520" ry="200" fill="#fff" opacity=".07"/>`))};};
+const pick=l=>{const I=imgs();return Object.fromEntries(l.map(k=>[k,I[k]]));};
+const mkB=(s,e='b')=>({t:'f',d:'',e,s,m:Date.now()});
+const dirs=(l,o={})=>{l.split(',').forEach(n=>o[n]=mkD());return o;};
+const fil=(spec,e='b')=>Object.fromEntries(spec.split(',').map(x=>{const [n,k]=x.split(':');return [n,mkB(k*1024,e)];}));
+const TN={dll:'Application extension',sys:'System file',ini:'Configuration settings',wav:'Wave Sound',dat:'DAT File',ttf:'TrueType font file',cur:'Cursor',ani:'Animated cursor',log:'Text Document'};
+function defaultFS(){
+  const pub=()=>mkD(dirs('Desktop,Documents,Downloads,Music,Pictures,Videos'));
+  const hosts='# Copyright (c) 1993-2009 Microsoft Corp.\n#\n# This is a sample HOSTS file used by Microsoft TCP/IP for Windows.\n#\n127.0.0.1       localhost\n::1             localhost\n';
+  const sys32=mkD({...dirs('config,drivers,en-US,spool,wbem,WindowsPowerShell,catroot,catroot2,Tasks,oobe,ras,winevt,DriverStore,migration,Microsoft'),
+    drivers:mkD({etc:mkD({hosts:mkF(hosts),services:mkF('# service name  port/protocol\nhttp  80/tcp\nhttps 443/tcp\nftp   21/tcp\n'),networks:mkF('loopback  127\n')}),...fil('disk.sys:70,tcpip.sys:2000,ntfs.sys:1700,volmgr.sys:60,null.sys:5')}),
+    config:mkD(fil('SAM:256,SECURITY:256,SOFTWARE:60000,SYSTEM:12000,DEFAULT:256')),
+    ...fil('notepad.exe:193,calc.exe:918,mspaint.exe:6144,cmd.exe:295,regedit.exe:154,taskmgr.exe:278,winver.exe:12,control.exe:114,shutdown.exe:24,msinfo32.exe:340,dxdiag.exe:850,mstsc.exe:1100,charmap.exe:290,mmc.exe:1500,ping.exe:20,ipconfig.exe:28,tasklist.exe:80,winlogon.exe:340,lsass.exe:30,csrss.exe:6,services.exe:260,svchost.exe:20,smss.exe:60,wininit.exe:170,dwm.exe:80,spoolsv.exe:230,ntoskrnl.exe:6000','x'),
+    ...fil('kernel32.dll:1100,ntdll.dll:1600,user32.dll:800,gdi32.dll:300,shell32.dll:12000,advapi32.dll:600,ole32.dll:1500,msvcrt.dll:700,comdlg32.dll:300,hal.dll:300')});
+  const wow=mkD({...dirs('en-US,drivers,config,wbem'),...fil('cmd.exe:236,notepad.exe:165,regedit.exe:125,calc.exe:800,mspaint.exe:5000,taskmgr.exe:240,winver.exe:10,control.exe:100,shutdown.exe:20','x'),...fil('kernel32.dll:900,ntdll.dll:1500,user32.dll:700,gdi32.dll:250,shell32.dll:10000,ole32.dll:1300,msvcrt.dll:600')});
+  const win=mkD({...dirs('addins,AppCompat,AppPatch,assembly,Boot,Branding,CSC,debug,diagnostics,DigitalLocker,Downloaded Program Files,en-US,Globalization,Help,IME,inf,Installer,L2Schemas,LiveKernelReports,Logs,Microsoft.NET,Offline Web Pages,Panther,Performance,PLA,PolicyDefinitions,Prefetch,Resources,SchCache,schemas,security,ServiceProfiles,servicing,Setup,ShellNew,SoftwareDistribution,Speech,System,Tasks,Temp,tracing,twain_32,Vss,WinSxS'),
+    System32:sys32,SysWOW64:wow,
+    Fonts:mkD(fil('arial.ttf:780,arialbd.ttf:760,times.ttf:820,cour.ttf:700,segoeui.ttf:870,tahoma.ttf:700,verdana.ttf:200,calibri.ttf:1400')),
+    Media:mkD(fil('Windows Startup.wav:370,Windows Shutdown.wav:310,Windows Logon Sound.wav:290,chimes.wav:50,chord.wav:50,ding.wav:30,notify.wav:80,tada.wav:60,ringout.wav:100')),
+    Cursors:mkD(fil('aero_arrow.cur:4,aero_busy.ani:60,aero_link.cur:4,aero_helpsel.cur:4')),
+    Web:mkD({Wallpaper:mkD({...dirs('Architecture,Characters,Landscapes'),Windows:mkD({'img0.svg':imgs()['Aero.svg']}),Nature:mkD(pick(['Sunset.svg','Ocean.svg','Forest.svg'])),Scenes:mkD(pick(['Night.svg','Aurora.svg']))}),Screen:mkD()}),
+    ...fil('explorer.exe:2500,notepad.exe:190,regedit.exe:370,hh.exe:17,HelpPane.exe:1000,splwow64.exe:70,write.exe:10','x'),
+    'win.ini':mkF('; for 16-bit app support\n[fonts]\n[extensions]\n[mci extensions]\n[files]\n[Mail]\nMAPI=1\n'),
+    'system.ini':mkF('; for 16-bit app support\n[386Enh]\n[drivers]\nwave=mmdrv.dll\ntimer=timer.drv\n[mci]\n'),
+    ...fil('bootstat.dat:64')});
+  const pf=()=>mkD({'Common Files':mkD(dirs('Microsoft Shared,System')),'Internet Explorer':mkD(fil('iexplore.exe:800','x')),'Windows Media Player':mkD(fil('wmplayer.exe:200','x')),...dirs('Windows Mail,Windows NT,Windows Photo Viewer,Windows Sidebar,MSBuild,Reference Assemblies')});
+  return Object.assign(mkD({'C:':mkD({PerfLogs:mkD(),'Program Files':pf(),'Program Files (x86)':pf(),ProgramData:mkD(dirs('Microsoft,Package Cache')),
+    Users:mkD({Public:pub(),User:mkD({...dirs('Desktop,Downloads,Music,Videos,Contacts,Favorites,Links,Searches,Saved Games'),Pictures:mkD(imgs()),
+      Documents:mkD({'Welcome.txt':mkF('Welcome to html7!\n\nThis is a virtual disk saved in your browser.\nDrag files from your real computer onto any Explorer window to import them,\nor use the Import button. Select a file and press Export to download it.\n')}),
+      AppData:mkD({Local:mkD(dirs('Temp,Microsoft')),LocalLow:mkD(),Roaming:mkD(dirs('Microsoft'))})})}),
+    Windows:win,'$Recycle.Bin':mkD()})}),{v:3});}
+function mergeDefaults(dst,src){for(const k in src.k){if(!dst.k[k])dst.k[k]=src.k[k];else if(src.k[k].t==='d'&&dst.k[k].t==='d')mergeDefaults(dst.k[k],src.k[k]);}}
+let FS=defaultFS(),fsDb=null,_sv,exPending=null;
+const ex={},exClip={mode:null,paths:[]},np={},cw={};
+const TXT=['txt','md','log','js','json','css','html','htm','csv','ini','xml','bat','cfg','c','py','asm'],IMG=['png','jpg','jpeg','gif','bmp','webp','svg'],AUD=['mp3','wav','ogg','m4a','flac'],VID=['mp4','webm','mov'];
+const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',bmp:'image/bmp'};
+const clean=n=>n.replace(/[<>"'\\\/:*?|&]/g,'').trim();
+const fsGet=p=>p===''?FS:p.split('\\').filter(Boolean).reduce((n,x)=>n&&n.t==='d'?n.k[x]:null,FS);
+const par=p=>p.includes('\\')?p.slice(0,p.lastIndexOf('\\')):'',bas=p=>p.slice(p.lastIndexOf('\\')+1),join=(a,b)=>a?a+'\\'+b:b;
+const extOf=n=>{const i=n.lastIndexOf('.');return i>0?n.slice(i+1).toLowerCase():'';};
+const inBin=p=>p===BIN||p.startsWith(BIN+'\\');
+function canon(p){let n=FS;const o=[];for(const x of p.split('\\').filter(Boolean)){if(!n||n.t!=='d')return null;const k=Object.keys(n.k).find(k=>k.toLowerCase()===x.toLowerCase());if(!k)return null;o.push(k);n=n.k[k];}return o.join('\\');}
+function fsSave(){clearTimeout(_sv);_sv=setTimeout(()=>{try{fsDb&&fsDb.transaction('kv','readwrite').objectStore('kv').put(FS,'fs');}catch(e){}},300);}
+(async()=>{try{fsDb=await new Promise((res,rej)=>{const r=indexedDB.open('html7',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej();});
+  const v=await new Promise(res=>{const q=fsDb.transaction('kv').objectStore('kv').get('fs');q.onsuccess=()=>res(q.result);q.onerror=()=>res(null);});
+  if(v){FS=v;if((FS.v||0)<3){mergeDefaults(FS,defaultFS());FS.v=3;fsSave();}exAll();applyRegistry();}else fsSave();}catch(e){}})();
+const uniq=(d,name)=>{if(!d.k[name])return name;const i=name.lastIndexOf('.'),b=i>0?name.slice(0,i):name,e=i>0?name.slice(i):'';let n=2;while(d.k[`${b} (${n})${e}`])n++;return `${b} (${n})${e}`;};
+function fsAdd(dir,name,node){const d=fsGet(dir);if(!d||d.t!=='d')return null;name=uniq(d,clean(name)||'New');node.m=Date.now();d.k[name]=node;d.m=Date.now();fsSave();return join(dir,name);}
+function fsWrite(path,data,enc='t',size){const d=fsGet(par(path));if(!d)return false;d.k[bas(path)]={t:'f',d:data,e:enc,s:size??data.length,m:Date.now()};fsSave();return true;}
+function fsRemove(path){const d=fsGet(par(path));if(d){delete d.k[bas(path)];d.m=Date.now();}}
+function fsDel(path){const n=fsGet(path);if(!n||!par(path)||path===BIN)return;if(inBin(path))fsRemove(path);else{const b=fsGet(BIN);n.orig=path;b.k[uniq(b,bas(path))]=n;fsRemove(path);}fsSave();}
+function fsRestore(path){const n=fsGet(path);if(!n||!n.orig)return;const o=n.orig;let dir=par(o);if(!fsGet(dir))dir=HOME+'\\Documents';delete n.orig;fsRemove(path);const d=fsGet(dir);d.k[uniq(d,bas(o))]=n;fsSave();}
+function fsMove(src,dir){const n=fsGet(src),d=fsGet(dir);if(!n||!d||d.t!=='d'||dir===src||dir.startsWith(src+'\\')||par(src)===dir)return false;fsRemove(src);delete n.orig;d.k[uniq(d,bas(src))]=n;d.m=Date.now();fsSave();return true;}
+function fsCopy(src,dir){const n=fsGet(src),d=fsGet(dir);if(!n||!d||dir===src||dir.startsWith(src+'\\'))return false;const c=structuredClone(n);delete c.orig;d.k[uniq(d,bas(src))]=c;fsSave();return true;}
+function fsRename(path,nn){nn=clean(nn);const d=fsGet(par(path));if(!nn||!d)return false;if(nn===bas(path))return true;if(d.k[nn]){msgBox('Rename','A file with the name you specified already exists. Specify a different file name.');return false;}d.k[nn]=d.k[bas(path)];delete d.k[bas(path)];fsSave();return true;}
+const fsSize=n=>n.t==='f'?n.s:Object.values(n.k).reduce((a,c)=>a+fsSize(c),0);
+const fmtSize=n=>n===0?'0 KB':n<1024?'1 KB':n<1048576?Math.ceil(n/1024).toLocaleString()+' KB':(n/1048576).toFixed(1)+' MB';
+const fmtDate=t=>new Date(t).toLocaleString([],{dateStyle:'short',timeStyle:'short'});
+const fileIcon=(n,name)=>n.t==='d'?'📁':n.e==='x'||['dll','sys'].includes(extOf(name))?'⚙️':IMG.includes(extOf(name))?'🖼️':AUD.includes(extOf(name))?'🎵':VID.includes(extOf(name))?'🎬':'📄';
+const typeName=(n,name)=>{const x=extOf(name);return n.t==='d'?'File folder':n.e==='x'?'Application':x==='txt'?'Text Document':TN[x]||(x?x.toUpperCase()+' File':'File');};
+function setTitle(id,t){const w=windows[id];if(!w)return;w.title=t;const a=w.el.querySelector('.aero-titlebar .truncate'),b=document.getElementById('tb-'+id)?.querySelector('.truncate');if(a)a.textContent=t;if(b)b.textContent=t;}
+function exAll(){Object.keys(ex).forEach(i=>{if(windows[i])exRender(i);else delete ex[i];});}
+
+/* ---- open files ---- */
+function openFile(path){const n=fsGet(path);if(!n)return;const name=bas(path),x=extOf(name);
+  if(n.t==='d')return exOpen(path);
+  if(n.e==='x'){const k=name.toLowerCase().replace(/\.exe$/,'');return RUN_MAP[k]?runCommand(name):msgBox(esc(name),'This program is not available in html7.');}
+  if(n.e==='b')return msgBox(esc(name),"Windows can't open this file.<br><br>This is a system file and html7 has no program that can open it.");
+  if(IMG.includes(x))return vwOpen(path);
+  if(AUD.includes(x)||VID.includes(x))return mpOpenFolder(path);
+  if(n.e==='t')return npOpen(path);
+  msgBox(esc(name),"Windows can't open this file.<br><br>To open this file, Windows needs to know what program you want to use to open it.");}
+const winId=(app,t)=>app+'_'+t.replace(/[^\w-]+/g,'_');
+function vwOpen(path){const t=path+' - Viewer',id=winId('viewer',t);openApp('viewer',t);const box=document.getElementById('vw-'+id);
+  if(box&&!box.dataset.l){box.dataset.l=1;const n=fsGet(path),x=extOf(bas(path)),u=n.d;
+    box.innerHTML=IMG.includes(x)?`<img src="${u}" style="max-width:100%;max-height:100%">`:AUD.includes(x)?`<audio controls src="${u}"></audio>`:`<video controls src="${u}" style="max-width:100%;max-height:100%"></video>`;setTitle(id,bas(path)+' - Viewer');}}
+
+/* ---- Notepad with real Open/Save ---- */
+function npHTML(id){const b=(l,f)=>`<span class="cursor-pointer hover:bg-gray-200 px-1 rounded" onclick="${f}('${id}')">${l}</span>`;
+  return `<div class="bg-gray-100 text-xs p-1 border-b flex gap-3">${b('New','npNew')}${b('Open...','npOpenDlg')}${b('Save','npSave')}${b('Save As...','npSaveAs')}</div><textarea id="note-text-${id}" class="w-full flex-1 p-2 outline-none resize-none font-mono text-sm" style="user-select:text" placeholder="Type here..."></textarea>`;}
+function npOpen(path){const t=path+' - Notepad',id=winId('notepad',t);openApp('notepad',t);np[id]={path};const ta=document.getElementById('note-text-'+id);if(ta&&!ta.dataset.l){ta.dataset.l=1;ta.value=fsGet(path).d;setTitle(id,bas(path)+' - Notepad');}}
+const npNew=id=>{document.getElementById('note-text-'+id).value='';np[id]={path:null};setTitle(id,'Untitled - Notepad');};
+const npOpenDlg=id=>pickFile('open',p=>{const n=fsGet(p);document.getElementById('note-text-'+id).value=n.e==='t'?n.d:'';np[id]={path:p};setTitle(id,bas(p)+' - Notepad');});
+function npSave(id){const s=np[id],tx=document.getElementById('note-text-'+id).value;if(s&&s.path){fsWrite(s.path,tx,'t',new Blob([tx]).size);exAll();}else npSaveAs(id);}
+function npSaveAs(id){const tx=document.getElementById('note-text-'+id).value;pickFile('save',p=>{fsWrite(p,tx,'t',new Blob([tx]).size);np[id]={path:p};setTitle(id,bas(p)+' - Notepad');exAll();},'Untitled.txt','txt');}
+
+/* ---- Paint save/open ---- */
+function paintFS(id){const bar=document.getElementById('paint-color-'+id)?.parentElement;if(!bar)return;const c='text-xs px-2 py-1 bg-white border rounded hover:bg-gray-50';
+  bar.insertAdjacentHTML('beforeend',`<button class="${c}" onclick="paintSave('${id}')">Save</button><button class="${c}" onclick="paintOpen('${id}')">Open</button>`);}
+function paintSave(id){const cv=document.getElementById('paint-canvas-'+id),t=document.createElement('canvas');t.width=cv.width;t.height=cv.height;const c=t.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,t.width,t.height);c.drawImage(cv,0,0);const u=t.toDataURL('image/png');
+  pickFile('save',p=>{fsWrite(p,u,'u',Math.round(u.length*.75));exAll();},'Untitled.png','png',HOME+'\\Pictures');}
+function paintOpen(id){pickFile('open',p=>{const n=fsGet(p);if(!IMG.includes(extOf(p))||n.e!=='u'){msgBox('Paint','That is not an image file.');return;}const im=new Image(),cv=document.getElementById('paint-canvas-'+id);
+  im.onload=()=>{const r=Math.min(cv.width/im.width,cv.height/im.height,1),c=cv.getContext('2d');c.clearRect(0,0,cv.width,cv.height);c.drawImage(im,0,0,im.width*r,im.height*r);};im.src=n.d;},'','png',HOME+'\\Pictures');}
+
+/* ---- file picker dialog ---- */
+function pickFile(mode,cb,def='',ext='txt',dir){let cur=dir||HOME+'\\Documents';
+  const d=dlg(mode==='save'?'Save As':'Open',`<div class="flex gap-1 mb-1"><button class="pk-up px-2 border bg-white">⬆</button><input class="pk-path flex-1 border px-1" readonly></div><div class="pk-list border overflow-auto" style="height:160px"></div><div class="flex gap-1 mt-2 items-center"><span>File name:</span><input class="pk-name flex-1 border px-1" style="user-select:text" value="${esc(def)}"></div>`,
+  [[mode==='save'?'Save':'Open',()=>{let n=clean(d.querySelector('.pk-name').value);if(!n)return false;if(mode==='save'&&!extOf(n))n+='.'+ext;const p=join(cur,n),f=fsGet(p);
+    if(mode==='open'){if(!f||f.t!=='f'){msgBox('Open',esc(n)+'<br>File not found.');return false;}}else if(f&&f.t==='d')return false;cb(p);}],['Cancel',()=>{}]]);
+  d.style.width='440px';d.style.left=(innerWidth/2-220)+'px';
+  const list=d.querySelector('.pk-list'),ni=d.querySelector('.pk-name'),ok=()=>d.querySelector('.dlg-btns button').click();
+  const draw=()=>{const n=fsGet(cur);d.querySelector('.pk-path').value=cur||'Computer';list.innerHTML=Object.keys(n.k).filter(k=>k[0]!=='$').sort((a,b)=>(n.k[b].t==='d')-(n.k[a].t==='d')||a.localeCompare(b)).map(k=>`<div data-k="${k}" class="px-2 py-0.5 cursor-pointer hover:bg-blue-100">${fileIcon(n.k[k],k)} ${k}</div>`).join('');};
+  list.onclick=e=>{const r=e.target.closest('[data-k]');if(r&&fsGet(cur).k[r.dataset.k].t==='f')ni.value=r.dataset.k;};
+  list.ondblclick=e=>{const r=e.target.closest('[data-k]');if(!r)return;if(fsGet(cur).k[r.dataset.k].t==='d'){cur=join(cur,r.dataset.k);draw();}else ok();};
+  d.querySelector('.pk-up').onclick=()=>{cur=par(cur);draw();};ni.onkeydown=e=>{if(e.key==='Enter')ok();};draw();ni.focus();}
+
+/* ---- context menu ---- */
+function ctxMenu(x,y,items){document.getElementById('ctx-menu')?.remove();const m=document.createElement('div');m.id='ctx-menu';m.className='aero-glass';
+  m.style.cssText=`position:fixed;left:${Math.min(x,innerWidth-180)}px;top:${Math.max(0,Math.min(y,innerHeight-items.length*26-10))}px;z-index:99998;background:#f5f8fc;padding:2px;font-size:12px;min-width:160px`;
+  items.forEach(([l,f])=>{if(l==='-'){m.insertAdjacentHTML('beforeend','<div class="border-t my-1"></div>');return;}const d=document.createElement('div');d.className='px-5 py-1 cursor-pointer hover:bg-blue-200 whitespace-nowrap';d.textContent=l;d.onclick=()=>{m.remove();f();};m.appendChild(d);});
+  document.body.appendChild(m);setTimeout(()=>document.addEventListener('click',()=>m.remove(),{once:true}),0);}
+
+/* ---- Explorer ---- */
+const NAV=[['Favorites'],['🖥️ Desktop',HOME+'\\Desktop'],['⬇️ Downloads',HOME+'\\Downloads'],['Libraries'],['📁 Documents',HOME+'\\Documents'],['🎵 Music',HOME+'\\Music'],['🖼️ Pictures',HOME+'\\Pictures'],['🎬 Videos',HOME+'\\Videos'],['Computer'],['🖥️ Computer',''],['💽 Local Disk (C:)','C:'],['🗑️ Recycle Bin',BIN]];
+const exTitle=p=>p===''?'Computer':p===BIN?'Recycle Bin':bas(p);
+function exOpen(path){const t=exTitle(path),id=winId('explorer',t);if(windows[id]){openApp('explorer',t);exGo(id,path);return;}exPending=path;openApp('explorer',t);}
+function exHTML(id){return `<div class="flex flex-col h-full text-xs" style="background:#f0f5fb" ondragover="event.preventDefault()" ondrop="exDrop(event,'${id}')">
+<div class="flex items-center gap-1 p-1 border-b" style="background:#e4ecf7"><button class="px-2 border rounded bg-white" onclick="exNav('${id}','b')">◀</button><button class="px-2 border rounded bg-white" onclick="exNav('${id}','f')">▶</button><button class="px-2 border rounded bg-white" onclick="exNav('${id}','u')">⬆</button><input id="ex-addr-${id}" class="flex-1 border px-1 py-0.5 bg-white" style="user-select:text" onkeydown="if(event.key==='Enter')exAddr('${id}',this.value)"><input id="ex-q-${id}" placeholder="Search" class="w-32 border px-1 py-0.5 bg-white" style="user-select:text" oninput="ex['${id}'].q=this.value;exRender('${id}')"></div>
+<div class="flex items-center gap-1 px-1 py-0.5 border-b bg-white flex-wrap" id="ex-cmds-${id}"></div>
+<div class="flex flex-1 overflow-hidden"><div id="ex-nav-${id}" class="overflow-auto border-r p-1 bg-white" style="width:150px"></div><div id="ex-main-${id}" tabindex="0" class="flex-1 overflow-auto p-1 bg-white" style="outline:none"></div></div>
+<div id="ex-stat-${id}" class="border-t px-2 py-0.5 bg-gray-100"></div>
+<input type="file" multiple id="ex-file-${id}" class="hidden" onchange="exImport('${id}',this.files);this.value=''"></div>`;}
+function exInit(id,appId){const t=windows[id].title;let p=exPending;exPending=null;
+  if(p===null)p=appId==='computer'?'':appId==='documents'?HOME+'\\Documents':appId==='trash'?BIN:['Documents','Pictures','Music','Videos','Desktop','Downloads'].includes(t)?HOME+'\\'+t:t==='Recycle Bin'?BIN:'';
+  const s=ex[id]={path:p,hist:[p],pos:0,sel:[],items:[],view:'icons',q:'',sort:'name',asc:true};
+  const m=document.getElementById('ex-main-'+id),nav=document.getElementById('ex-nav-'+id),P=e=>{const it=e.target.closest('[data-p]');return it?it.dataset.p:null;};
+  nav.onclick=e=>{const p=P(e);if(p!==null)exGo(id,p);};
+  m.onmousedown=e=>{const p=P(e);if(p===null){if(e.button===0){s.sel=[];exSel(id);}return;}if(e.ctrlKey)s.sel=s.sel.includes(p)?s.sel.filter(x=>x!==p):[...s.sel,p];else if(!s.sel.includes(p))s.sel=[p];exSel(id);};
+  m.ondblclick=e=>{const p=P(e);if(p===null)return;const n=fsGet(p);if(!n)return;if(n.t==='d')exGo(id,p);else if(inBin(s.path))msgBox('Recycle Bin',"You can't open this item while it is in the Recycle Bin. To open it, restore it first.");else openFile(p);};
+  m.ondragstart=e=>{const p=P(e);if(p===null)return;if(!s.sel.includes(p)){s.sel=[p];exSel(id);}e.dataTransfer.setData('text/x-html7',JSON.stringify(s.sel));};
+  m.oncontextmenu=e=>{e.preventDefault();const p=P(e);if(p!==null&&!s.sel.includes(p)){s.sel=[p];exSel(id);}if(p===null){s.sel=[];exSel(id);}const c=x=>()=>exCmd(id,x),W=s.path&&!inBin(s.path);let it;
+    if(s.sel.length&&s.path)it=inBin(s.path)?[['Restore',c('restore')],['-'],['Delete',c('delete')],['Properties',c('props')]]:[['Open',c('open')],['-'],['Cut',c('cut')],['Copy',c('copy')],['-'],['Delete',c('delete')],['Rename',c('rename')],['-'],...(s.sel.length===1&&IMG.includes(extOf(s.sel[0]))?[['Set as desktop background',c('wallpaper')]]:[]),['Export',c('export')],['Properties',c('props')]];
+    else it=inBin(s.path)?[['Empty Recycle Bin',c('empty')],['Refresh',c('refresh')]]:W?[['Paste',c('paste')],['-'],['New Folder',c('newfolder')],['New Text Document',c('newtext')],['Import files...',c('import')],['-'],['Refresh',c('refresh')]]:[['Refresh',c('refresh')]];
+    ctxMenu(e.clientX,e.clientY,it);};
+  m.onkeydown=e=>{const k=e.key.toLowerCase();if(e.target!==m)return;if(k==='delete')exCmd(id,'delete');else if(k==='f2')exCmd(id,'rename');else if(k==='enter')exCmd(id,'open');else if(k==='backspace')exNav(id,'u');else if(e.ctrlKey&&k==='a'){e.preventDefault();s.sel=[...s.items];exSel(id);}else if(e.ctrlKey&&k==='c')exCmd(id,'copy');else if(e.ctrlKey&&k==='x')exCmd(id,'cut');else if(e.ctrlKey&&k==='v')exCmd(id,'paste');};
+  exRender(id);}
+function exGo(id,p,hist=true){const s=ex[id];if(!s)return;if(!fsGet(p)&&p!==''){msgBox('Windows Explorer',esc(p)+'<br>Windows can\'t find this item.');return;}
+  if(hist){s.hist=s.hist.slice(0,s.pos+1);s.hist.push(p);s.pos++;}s.path=p;s.sel=[];s.q='';const q=document.getElementById('ex-q-'+id);if(q)q.value='';setTitle(id,exTitle(p));exRender(id);}
+function exNav(id,d){const s=ex[id];if(d==='b'&&s.pos>0){s.pos--;exGo(id,s.hist[s.pos],false);}else if(d==='f'&&s.pos<s.hist.length-1){s.pos++;exGo(id,s.hist[s.pos],false);}else if(d==='u'&&s.path!=='')exGo(id,par(s.path));}
+function exAddr(id,v){v=v.trim().replace(/\\+$/,'');if(!v||/^computer$/i.test(v))return exGo(id,'');if(/^recycle bin$/i.test(v))return exGo(id,BIN);const p=canon(v);if(p!==null&&fsGet(p)&&fsGet(p).t==='d')exGo(id,p);else msgBox('Windows Explorer',esc(v)+'<br>Windows can\'t find this folder. Check the spelling and try again.');}
+function exSort(id,k){const s=ex[id];s.asc=s.sort===k?!s.asc:true;s.sort=k;exRender(id);}
+function exSel(id){const s=ex[id],m=document.getElementById('ex-main-'+id);if(!m)return;m.querySelectorAll('[data-p]').forEach(el=>el.classList.toggle('exsel',s.sel.includes(el.dataset.p)));exStat(id);}
+const exStat=id=>{const s=ex[id],e=document.getElementById('ex-stat-'+id);if(e)e.textContent=s.sel.length?s.sel.length+(s.sel.length>1?' items selected':' item selected'):s.items.length+(s.items.length===1?' item':' items');};
+function exRender(id){const s=ex[id],m=document.getElementById('ex-main-'+id);if(!m)return;
+  if(!fsGet(s.path)&&s.path!==''){s.path='';}
+  const node=fsGet(s.path);document.getElementById('ex-addr-'+id).value=s.path||'Computer';
+  document.getElementById('ex-nav-'+id).innerHTML=NAV.map(([l,p])=>p===undefined?`<div class="font-bold text-blue-900 mt-2 mb-0.5">${l}</div>`:`<div data-p="${p}" class="px-1 py-0.5 cursor-pointer rounded hover:bg-blue-100 ${s.path===p?'bg-blue-200':''}">${l}</div>`).join('');
+  const bin=inBin(s.path),B=(l,c)=>`<button class="px-2 py-0.5 border border-transparent rounded hover:border-gray-400 hover:bg-gray-50" onclick="exCmd('${id}','${c}')">${l}</button>`;
+  document.getElementById('ex-cmds-'+id).innerHTML=(bin?B('Restore','restore')+B('Empty Recycle Bin','empty')+B('Delete','delete'):s.path===''?'':B('New folder','newfolder')+B('Import','import')+B('Cut','cut')+B('Copy','copy')+B('Paste','paste')+B('Rename','rename')+B('Delete','delete')+B('Export','export'))+`<select class="ml-auto border bg-white" onchange="ex['${id}'].view=this.value;exRender('${id}')"><option value="icons" ${s.view==='icons'?'selected':''}>Icons</option><option value="details" ${s.view==='details'?'selected':''}>Details</option></select>`;
+  if(s.path===''){s.items=Object.keys(node.k);m.innerHTML=Object.keys(node.k).map(k=>{const u=fsSize(node.k[k]),pc=Math.min(100,u/1e8*100);return `<div data-p="${k}" class="inline-flex gap-2 items-center m-2 p-2 border border-transparent" style="width:230px"><span style="font-size:34px">💽</span><div><div>Local Disk (${k})</div><div class="bg-gray-200 h-3 border border-gray-400 mt-1" style="width:130px"><div class="h-full bg-blue-500" style="width:${Math.max(2,pc)}%"></div></div><div class="text-gray-500 mt-1">${(100-u/1e9).toFixed(1)} GB free of 100 GB</div></div></div>`;}).join('');exSel(id);return;}
+  const q=s.q.toLowerCase(),dirs=1,cmp={name:(a,b)=>a.k.localeCompare(b.k),date:(a,b)=>a.n.m-b.n.m,type:(a,b)=>typeName(a.n,a.k).localeCompare(typeName(b.n,b.k)),size:(a,b)=>fsSize(a.n)-fsSize(b.n)}[s.sort];
+  const items=Object.keys(node.k).filter(k=>k[0]!=='$'&&k.toLowerCase().includes(q)).map(k=>({k,n:node.k[k],p:join(s.path,k)})).sort((a,b)=>(b.n.t==='d')-(a.n.t==='d')||cmp(a,b)*(s.asc?1:-1));
+  s.items=items.map(i=>i.p);
+  if(!items.length)m.innerHTML=`<div class="text-gray-500 italic p-4">${q?'No items match your search.':'This folder is empty.'}</div>`;
+  else if(s.view==='icons')m.innerHTML=items.map(({k,n,p})=>`<div data-p="${p}" draggable="true" title="${n.orig?esc(n.orig):''}" class="inline-block align-top m-1 p-1 text-center cursor-default" style="width:84px"><div style="font-size:34px;height:42px">${IMG.includes(extOf(k))&&n.e==='u'?`<img src="${n.d}" style="width:40px;height:40px;object-fit:cover;margin:0 auto">`:fileIcon(n,k)}</div><div style="word-break:break-word">${k}</div></div>`).join('');
+  else m.innerHTML=`<table class="w-full"><thead><tr class="text-left" style="background:linear-gradient(#fff,#ececec)">${[['name','Name'],['date','Date modified'],['type','Type'],['size','Size']].map(([c,l])=>`<th class="px-2 py-0.5 border-r border-gray-300 font-normal cursor-pointer" onclick="exSort('${id}','${c}')">${l}${s.sort===c?(s.asc?' ▴':' ▾'):''}</th>`).join('')}</tr></thead><tbody>${items.map(({k,n,p})=>`<tr data-p="${p}" draggable="true" class="cursor-default"><td class="px-2 py-0.5 whitespace-nowrap">${fileIcon(n,k)} ${k}</td><td class="px-2 whitespace-nowrap">${fmtDate(n.m)}</td><td class="px-2 whitespace-nowrap">${typeName(n,k)}</td><td class="px-2 text-right whitespace-nowrap">${n.t==='f'?fmtSize(n.s):''}</td></tr>`).join('')}</tbody></table>`;
+  s.sel=s.sel.filter(p=>s.items.includes(p));exSel(id);}
+function exCmd(id,c){const s=ex[id],sel=s.sel,W=s.path&&!inBin(s.path),one=sel.length===1?sel[0]:null;
+  if(c==='newfolder'||c==='newtext'){if(!W)return;const p=fsAdd(s.path,c==='newfolder'?'New folder':'New Text Document.txt',c==='newfolder'?mkD():mkF(''));s.sel=[p];exAll();exCmd(id,'rename');}
+  else if(c==='rename'){if(!one||inBin(one))return;ask('Rename','New name:',bas(one),v=>{if(fsRename(one,v)){s.sel=[join(par(one),clean(v))];exAll();}});}
+  else if(c==='delete'){if(!sel.length)return;const go=()=>{sel.forEach(fsDel);s.sel=[];exAll();};if(inBin(s.path))dlg('Delete','Are you sure you want to permanently delete '+(sel.length>1?'these '+sel.length+' items':'"'+esc(bas(sel[0]))+'"')+'?',[['Yes',go],['No',()=>{}]]);else go();}
+  else if(c==='restore'){sel.forEach(fsRestore);s.sel=[];exAll();}
+  else if(c==='empty'){dlg('Delete Multiple Items','Are you sure you want to permanently delete all items in the Recycle Bin?',[['Yes',()=>{const b=fsGet(BIN);Object.keys(b.k).forEach(k=>delete b.k[k]);fsSave();exAll();}],['No',()=>{}]]);}
+  else if(c==='cut'||c==='copy'){if(sel.length){exClip.mode=c;exClip.paths=[...sel];}}
+  else if(c==='paste'){if(!W||!exClip.paths.length)return;exClip.paths.forEach(p=>exClip.mode==='cut'?fsMove(p,s.path):fsCopy(p,s.path));if(exClip.mode==='cut')exClip.paths=[];exAll();}
+  else if(c==='open'){sel.forEach(p=>{const n=fsGet(p);if(n&&!inBin(p))n.t==='d'?exGo(id,p):openFile(p);});}
+  else if(c==='import'){if(!W){msgBox('Import','Open a folder first (for example Documents), then import.');return;}document.getElementById('ex-file-'+id).click();}
+  else if(c==='export'){const n=one&&fsGet(one);if(!n||n.t!=='f'){msgBox('Export','Select a single file to export. Folders can\'t be exported yet.');return;}const a=document.createElement('a');a.href=n.e==='u'?n.d:URL.createObjectURL(new Blob([n.d],{type:'text/plain'}));a.download=bas(one);a.click();}
+  else if(c==='props'){const p=one||s.path,n=fsGet(p);if(!n)return;dlg('Properties',`<div class="text-base mb-2">${fileIcon(n,bas(p))} ${esc(bas(p)||'Computer')}</div>Type: ${typeName(n,bas(p))}<br>Location: ${esc(par(p)||'Computer')}<br>Size: ${n.t==='d'?fmtSize(fsSize(n))+' ('+Object.keys(n.k).length+' items)':fmtSize(n.s)}<br>Modified: ${fmtDate(n.m)}`,[['OK',()=>{}]]);}
+  else if(c==='wallpaper'){if(one)setWallpaper(one);}
+  else if(c==='refresh')exRender(id);}
+function exImport(id,files,dir){const s=ex[id];dir=dir??s.path;if(!dir||inBin(dir)){msgBox('Import','Open a folder first (for example Documents), then import.');return;}
+  [...files].forEach(f=>{if(f.size>25*1048576){msgBox('Import',esc(f.name)+' is larger than 25 MB.');return;}const tx=TXT.includes(extOf(f.name))||/^text\//.test(f.type),r=new FileReader();r.onload=()=>{fsAdd(dir,f.name,{t:'f',d:r.result,e:tx?'t':'u',s:f.size});exAll();};tx?r.readAsText(f):r.readAsDataURL(f);});}
+function exDrop(e,id){e.preventDefault();const s=ex[id],it=e.target.closest('[data-p]');let dest=s.path;if(it){const n=fsGet(it.dataset.p);if(n&&n.t==='d')dest=it.dataset.p;}
+  if(e.dataTransfer.files.length)return exImport(id,e.dataTransfer.files,dest);
+  const raw=e.dataTransfer.getData('text/x-html7');if(!raw||!dest)return;JSON.parse(raw).forEach(p=>dest===BIN?fsDel(p):fsMove(p,dest));s.sel=[];exAll();}
+
+/* ---- cmd: real dir/cd/mkdir/type/del ---- */
+const rpath=(cwd,x)=>{x=x.replace(/^"|"$/g,'').replace(/\//g,'\\');if(x.startsWith('\\'))x='C:'+x;const o=[];(/^[a-z]:/i.test(x)?x:cwd+'\\'+x).split('\\').filter(Boolean).forEach(q=>{if(q==='.')return;q==='..'?(o.length>1&&o.pop()):o.push(q);});return canon(o.join('\\'));};
+const _cr=cmdRun;
+cmdRun=function(id,line){const [c0,...a]=line.trim().split(/\s+/),c=(c0||'').toLowerCase(),arg=a.join(' ').replace(/^"|"$/g,''),out=document.getElementById('cmd-out-'+id),cwd=cw[id]||(cw[id]=HOME),T=x=>rpath(cwd,x||'.');let r=null;
+  const N=x=>{const p=T(x);return p===null?[null,null]:[p,fsGet(p)];};
+  if(c==='help')r='Supported: help, cls, echo, ver, date, time, dir, cd, mkdir, rd, type, del, whoami, hostname, tasklist, start <app>, shutdown, exit\n';
+  else if(c==='cd'||c==='chdir'){if(!arg)r=cwd+'\n';else{const [p,n]=N(arg);if(n&&n.t==='d')cw[id]=p;else r='The system cannot find the path specified.\n';}}
+  else if(c==='dir'){const [p,n]=N(arg);if(!n||n.t!=='d')r='File Not Found\n';else{const ks=Object.keys(n.k).filter(k=>k[0]!=='$').sort((x,y)=>(n.k[y].t==='d')-(n.k[x].t==='d')||x.localeCompare(y)),f=t=>new Date(t).toLocaleDateString()+'  '+new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    r=` Volume in drive C has no label.\n\n Directory of ${p}\n\n`+ks.map(k=>{const x=n.k[k];return f(x.m)+(x.t==='d'?'    <DIR>          ':String(x.s).padStart(15)+' ')+k;}).join('\n')+`\n               ${ks.filter(k=>n.k[k].t==='f').length} File(s)\n               ${ks.filter(k=>n.k[k].t==='d').length} Dir(s)\n`;}}
+  else if(c==='mkdir'||c==='md'){if(!arg)r='The syntax of the command is incorrect.\n';else if(fsGet(cwd).k[clean(arg)])r='A subdirectory or file '+arg+' already exists.\n';else{fsAdd(cwd,arg,mkD());r='';exAll();}}
+  else if(c==='type'){const [p,n]=N(arg);r=n&&n.t==='f'?(n.e==='t'?n.d:'(binary file)')+'\n':'The system cannot find the file specified.\n';}
+  else if(c==='del'||c==='erase'){const [p,n]=N(arg);if(n&&n.t==='f'){fsDel(p);exAll();r='';}else r='Could Not Find '+join(cwd,arg)+'\n';}
+  else if(c==='rd'||c==='rmdir'){const [p,n]=N(arg);if(!n||n.t!=='d'||!par(p))r='The system cannot find the file specified.\n';else if(Object.keys(n.k).length)r='The directory is not empty.\n';else{fsDel(p);exAll();r='';}}
+  else return _cr(id,line);
+  out.textContent+=r+'\n';const pe=document.getElementById('cmd-p-'+id);if(pe)pe.textContent=cw[id]+'>';};
+
+/* ---- hook into window manager ---- */
+Object.assign(APPS,{explorer:{title:'Explorer',icon:'fa-folder',color:'text-yellow-500',width:780,height:500,hidden:1},viewer:{title:'Media Viewer',icon:'fa-image',color:'',width:640,height:460,hidden:1}});
+['computer','documents','trash'].forEach(k=>Object.assign(APPS[k],{width:780,height:500}));
+Object.assign(EXE,{explorer:'explorer.exe',viewer:'dllhost.exe'});
+const EXAPPS=['explorer','computer','documents','trash'],_g2=getAppHTML,_i2=initAppLogic;
+getAppHTML=function(a,id){if(EXAPPS.includes(a))return exHTML(id);if(a==='notepad')return npHTML(id);if(a==='viewer')return `<div id="vw-${id}" class="flex-1 flex items-center justify-center bg-black overflow-auto"></div>`;return _g2(a,id);};
+initAppLogic=function(a,id){_i2(a,id);if(EXAPPS.includes(a))exInit(id,a);else if(a==='paint')paintFS(id);};
+
+/* ===== wallpapers + Windows Media Player ===== */
+function setWallpaper(path){const n=fsGet(path);if(!n||n.e!=='u')return;document.getElementById('desktop').style.background=`url("${n.d}") center/cover no-repeat`;const k=regKey(HK);if(k){k.v.Wallpaper=['REG_SZ',path];regSave();}}
+const _ap=applyRegistry;applyRegistry=function(){_ap();const w=regGet(HK,'Wallpaper');if(w){const n=fsGet(w);if(n&&n.e==='u')document.getElementById('desktop').style.background=`url("${n.d}") center/cover no-repeat`;}};
+const _ct2=changeTheme;changeTheme=c=>{const k=regKey(HK);if(k)delete k.v.Wallpaper;_ct2(c);};
+
+const MPKEY=Object.keys(APPS).find(k=>/media player/i.test(APPS[k].title))||'mediaplayer',mp={};
+Object.assign(APPS[MPKEY]||{},{width:780,height:520});
+const fmtT=t=>{if(!isFinite(t))return '0:00';t=Math.floor(t);return Math.floor(t/60)+':'+String(t%60).padStart(2,'0');};
+const attr=x=>String(x).replace(/"/g,'%22').replace(/</g,'%3C');
+const mpEl=id=>mp[id]&&mp[id].el,mpKind=n=>AUD.includes(extOf(n))?'audio':'video';
+function mpHTML(id){const B='px-2 py-0.5 border border-gray-500 rounded bg-gradient-to-b from-white to-gray-300 text-black hover:from-blue-50',g=(l,f,t)=>`<button title="${t}" class="text-lg px-1 hover:bg-white/20 rounded" onclick="${f}('${id}')">${l}</button>`;
+return `<div class="flex flex-col h-full text-xs" style="background:#141a2a;color:#dfe8f5">
+<div class="flex gap-1 p-1 items-center" style="background:linear-gradient(#e8eef8,#c3d2e9)"><input id="mp-url-${id}" placeholder="Paste a video / music URL or a YouTube link..." class="flex-1 border px-1 py-0.5 bg-white text-black" style="user-select:text" onkeydown="if(event.key==='Enter')mpUrl('${id}')"><button class="${B}" onclick="mpUrl('${id}')">Play URL</button><button class="${B}" onclick="mpPick('${id}')">Open...</button><button class="${B}" onclick="document.getElementById('mp-file-${id}').click()">From PC</button><button class="${B}" onclick="mpToggleList('${id}')">☰</button></div>
+<div class="flex flex-1 overflow-hidden"><div id="mp-stage-${id}" class="flex-1 flex items-center justify-center bg-black relative overflow-hidden"><div class="text-center text-gray-400"><div style="font-size:56px">▶️</div>Paste a link, open a file from your virtual disk,<br>or play one from your computer.</div></div><div id="mp-list-${id}" class="overflow-auto border-l border-gray-700" style="width:180px"></div></div>
+<div class="flex items-center gap-1 px-2 py-1" style="background:linear-gradient(#2a3550,#101626)">${g('⏮','mpPrev','Previous')}<button id="mp-pp-${id}" class="text-lg px-1 hover:bg-white/20 rounded" onclick="mpToggle('${id}')">▶</button>${g('⏹','mpStop','Stop')}${g('⏭','mpNext','Next')}<span id="mp-cur-${id}" class="w-10 text-right">0:00</span><input id="mp-seek-${id}" type="range" min="0" max="1000" value="0" class="flex-1" oninput="mpSeek('${id}',this.value)" onpointerdown="mp['${id}'].drag=1" onpointerup="mp['${id}'].drag=0"><span id="mp-dur-${id}" class="w-10">0:00</span><button id="mp-mute-${id}" class="px-1 hover:bg-white/20 rounded" onclick="mpMute('${id}')">🔊</button><input type="range" min="0" max="100" value="80" class="w-20" oninput="mpVol('${id}',this.value)">${g('⛶','mpFull','Full screen')}</div>
+<input type="file" id="mp-file-${id}" accept="video/*,audio/*" multiple class="hidden" onchange="mpFiles('${id}',this.files);this.value=''"></div>`;}
+function mpInit(id){mp[id]={list:[],i:-1,el:null,vol:.8,drag:0};mpRenderList(id);}
+function mpRenderList(id){const s=mp[id],e=document.getElementById('mp-list-'+id);if(!e)return;
+  e.innerHTML=s.list.length?s.list.map((it,i)=>`<div class="flex items-center gap-1 px-2 py-1 cursor-pointer hover:bg-white/10 ${i===s.i?'bg-blue-600/60':''}" onclick="mpPlay('${id}',${i})"><span>${i===s.i?'▶':it.kind==='audio'?'🎵':'🎬'}</span><span class="truncate flex-1" title="${esc(it.name)}">${esc(it.name)}</span><span class="opacity-60 hover:opacity-100" onclick="event.stopPropagation();mpRemove('${id}',${i})">✕</span></div>`).join(''):'<div class="p-3 opacity-60">Playlist is empty.</div>';}
+function mpToggleList(id){const e=document.getElementById('mp-list-'+id);e.style.display=e.style.display==='none'?'':'none';}
+function mpRemove(id,i){const s=mp[id];s.list.splice(i,1);if(i<s.i)s.i--;else if(i===s.i){mpStop(id);s.i=-1;}mpRenderList(id);}
+function mpAdd(id,item,play){const s=mp[id];s.list.push(item);mpRenderList(id);if(play||s.i<0)mpPlay(id,s.list.length-1);}
+function mpFiles(id,files){[...files].forEach((f,j)=>mpAdd(id,{name:f.name,kind:/^audio\//.test(f.type)||AUD.includes(extOf(f.name))?'audio':'video',src:URL.createObjectURL(f)},j===0));}
+function mpPick(id){pickFile('open',p=>{const n=fsGet(p),x=extOf(bas(p));if(!(AUD.includes(x)||VID.includes(x))||n.e!=='u'){msgBox('Windows Media Player','That is not a media file Windows Media Player can play.');return;}mpAdd(id,{name:bas(p),kind:mpKind(bas(p)),vfs:n.d},true);},'','mp4',HOME+'\\Music');}
+function mpOpenFolder(path){openApp(MPKEY);const id=MPKEY,s=mp[id],d=fsGet(par(path)),names=Object.keys(d.k).filter(k=>d.k[k].t==='f'&&d.k[k].e==='u'&&(AUD.includes(extOf(k))||VID.includes(extOf(k)))).sort((a,b)=>a.localeCompare(b));
+  s.list=names.map(k=>({name:k,kind:mpKind(k),vfs:d.k[k].d}));s.i=-1;mpPlay(id,Math.max(0,names.indexOf(bas(path))));}
+function mpUrl(id){const inp=document.getElementById('mp-url-'+id);let u=inp.value.trim();if(!u)return;if(!/^[a-z]+:\/\//i.test(u))u='https://'+u;inp.value='';
+  const yt=u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/),list=u.match(/[?&]list=([\w-]+)/),vm=u.match(/vimeo\.com\/(?:.*\/)?(\d+)/),file=u.split(/[?#]/)[0].split('/').pop()||'',x=extOf(file);let it;
+  if(yt){const tm=u.match(/[?&]t=(\d+)/);it={name:'YouTube video',kind:'embed',yt:yt[1],src:`https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&rel=0${list?'&list='+list[1]:''}${tm?'&start='+tm[1]:''}`,url:'https://www.youtube.com/watch?v='+yt[1]+(tm?'&t='+tm[1]:'')};}
+  else if(list&&/youtube\.com/.test(u))it={name:'YouTube playlist',kind:'embed',src:`https://www.youtube-nocookie.com/embed/videoseries?list=${list[1]}&autoplay=1`,url:u};
+  else if(vm)it={name:'Vimeo video',kind:'embed',src:`https://player.vimeo.com/video/${vm[1]}?autoplay=1`,url:u};
+  else if(AUD.includes(x)||VID.includes(x))it={name:file,kind:AUD.includes(x)?'audio':'video',src:u,url:u};
+  else it={name:u.replace(/^https?:\/\//,'').slice(0,40),kind:'embed',src:u,url:u};
+  mpAdd(id,it,true);}
+function mpPP(id,on){const b=document.getElementById('mp-pp-'+id);if(b)b.textContent=on?'⏸':'▶';}
+function mpUI(id,el){const q=n=>document.getElementById(n+id);if(!q('mp-seek-'))return;q('mp-seek-').value=0;q('mp-cur-').textContent='0:00';q('mp-dur-').textContent='0:00';mpPP(id,!!el);}
+async function mpPlay(id,i){const s=mp[id],it=s&&s.list[i],st=document.getElementById('mp-stage-'+id);if(!it||!st)return;s.i=i;
+  if(s.el){s.el.pause();s.el.removeAttribute('src');s.el=null;}
+  mpRenderList(id);setTitle(id,it.name+' - Windows Media Player');
+  if(it.yt&&location.protocol==='file:'&&!it.force){st.innerHTML=`<div class="text-center p-4"><img src="https://i.ytimg.com/vi/${it.yt}/hqdefault.jpg" style="max-width:100%;max-height:230px;margin:0 auto;cursor:pointer" onclick="window.open('${attr(it.url)}','_blank')"><div class="mt-3">YouTube won't play inside a page opened from a file on your computer.</div><div class="mt-2 flex gap-2 justify-center"><a href="${attr(it.url)}" target="_blank" rel="noopener" class="px-3 py-1 rounded bg-red-600 text-white">Watch on YouTube ↗</a><button class="px-3 py-1 rounded bg-gray-700" onclick="mp['${id}'].list[${i}].force=1;mpPlay('${id}',${i})">Try embedded player</button></div></div>`;mpUI(id,null);return;}
+  if(it.kind==='embed'){st.innerHTML=`<iframe src="${attr(it.src)}" class="w-full h-full" style="border:0;background:#000" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${attr(it.url)}" target="_blank" rel="noopener" class="absolute right-2 bottom-2 px-2 py-0.5 rounded bg-black/70 text-white hover:bg-black">Open in new tab ↗</a>`;mpUI(id,null);return;}
+  if(it.vfs&&!it.src){try{it.src=URL.createObjectURL(await(await fetch(it.vfs)).blob());}catch(e){it.src=it.vfs;}}
+  if(!mp[id]||mp[id].i!==i)return;
+  const el=document.createElement(it.kind==='audio'?'audio':'video');el.src=it.src;el.volume=s.vol;
+  st.innerHTML=it.kind==='audio'?`<div class="text-center"><div style="font-size:72px">🎵</div><div class="mt-2 text-sm">${esc(it.name)}</div></div>`:'';
+  if(it.kind==='video'){el.style.maxWidth='100%';el.style.maxHeight='100%';el.playsInline=true;}else el.style.display='none';
+  st.appendChild(el);s.el=el;
+  el.ontimeupdate=()=>{const sk=document.getElementById('mp-seek-'+id);if(!sk)return;if(!s.drag&&el.duration)sk.value=el.currentTime/el.duration*1000;document.getElementById('mp-cur-'+id).textContent=fmtT(el.currentTime);};
+  el.onloadedmetadata=()=>{const d=document.getElementById('mp-dur-'+id);if(d)d.textContent=fmtT(el.duration);};
+  el.onplay=()=>mpPP(id,true);el.onpause=()=>mpPP(id,false);el.onended=()=>mpNext(id,true);
+  el.onerror=()=>{st.innerHTML=`<div class="text-center p-4"><div style="font-size:42px">⚠️</div>Windows Media Player cannot play this ${it.url?'link':'file'}.<br><span class="opacity-70">The format isn't supported, or the site doesn't allow playback here.</span>${it.url?`<br><br><a href="${attr(it.url)}" target="_blank" rel="noopener" class="underline">Open in new tab ↗</a>`:''}</div>`;mpPP(id,false);};
+  mpUI(id,el);el.play().catch(()=>mpPP(id,false));}
+function mpToggle(id){const e=mpEl(id),s=mp[id];if(e)e.paused?e.play():e.pause();else if(s.list.length&&(s.i<0||s.list[s.i].kind!=='embed'))mpPlay(id,Math.max(0,s.i));}
+function mpStop(id){const s=mp[id],e=s.el;if(e){e.pause();e.currentTime=0;}else if(s.i>=0&&s.list[s.i]&&s.list[s.i].kind==='embed')document.getElementById('mp-stage-'+id).innerHTML='<div class="text-gray-500">Stopped</div>';mpPP(id,false);}
+function mpNext(id,auto){const s=mp[id];if(s.i+1<s.list.length)mpPlay(id,s.i+1);else if(auto)mpPP(id,false);}
+function mpPrev(id){const s=mp[id],e=s.el;if(e&&e.currentTime>3)e.currentTime=0;else if(s.i>0)mpPlay(id,s.i-1);}
+function mpSeek(id,v){const e=mpEl(id);if(e&&e.duration)e.currentTime=v/1000*e.duration;}
+function mpVol(id,v){const s=mp[id];s.vol=v/100;if(s.el)s.el.volume=s.vol;}
+function mpMute(id){const e=mpEl(id);if(!e)return;e.muted=!e.muted;document.getElementById('mp-mute-'+id).textContent=e.muted?'🔇':'🔊';}
+function mpFull(id){const st=document.getElementById('mp-stage-'+id);if(st.requestFullscreen)st.requestFullscreen();}
+const _g3=getAppHTML,_i3=initAppLogic;
+getAppHTML=function(a,id){if(a===MPKEY)return mpHTML(id);return _g3(a,id);};
+initAppLogic=function(a,id){_i3(a,id);if(a===MPKEY)mpInit(id);};
 
 window.onload = () => {
   renderDesktopIcons();
