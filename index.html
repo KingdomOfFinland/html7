@@ -1351,8 +1351,8 @@ function mpOpenFolder(path){openApp(MPKEY);const id=MPKEY,s=mp[id],d=fsGet(par(p
   s.list=names.map(k=>({name:k,kind:mpKind(k),vfs:d.k[k].d}));s.i=-1;mpPlay(id,Math.max(0,names.indexOf(bas(path))));}
 function mpUrl(id){const inp=document.getElementById('mp-url-'+id);let u=inp.value.trim();if(!u)return;if(!/^[a-z]+:\/\//i.test(u))u='https://'+u;inp.value='';
   const yt=u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/),list=u.match(/[?&]list=([\w-]+)/),vm=u.match(/vimeo\.com\/(?:.*\/)?(\d+)/),file=u.split(/[?#]/)[0].split('/').pop()||'',x=extOf(file);let it;
-  if(yt){const tm=u.match(/[?&]t=(\d+)/);it={name:'YouTube video',kind:'embed',yt:yt[1],src:`https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&rel=0${list?'&list='+list[1]:''}${tm?'&start='+tm[1]:''}`,url:'https://www.youtube.com/watch?v='+yt[1]+(tm?'&t='+tm[1]:'')};}
-  else if(list&&/youtube\.com/.test(u))it={name:'YouTube playlist',kind:'embed',src:`https://www.youtube-nocookie.com/embed/videoseries?list=${list[1]}&autoplay=1`,url:u};
+  if(yt){const tm=u.match(/[?&]t=(\d+)/);it={name:'YouTube video',kind:'embed',yt:yt[1],list:list?list[1]:null,start:tm?+tm[1]:0,src:`https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&rel=0${list?'&list='+list[1]:''}${tm?'&start='+tm[1]:''}`,url:'https://www.youtube.com/watch?v='+yt[1]+(tm?'&t='+tm[1]:'')};}
+  else if(list&&/youtube\.com/.test(u))it={name:'YouTube playlist',kind:'embed',list:list[1],src:`https://www.youtube-nocookie.com/embed/videoseries?list=${list[1]}&autoplay=1`,url:u};
   else if(vm)it={name:'Vimeo video',kind:'embed',src:`https://player.vimeo.com/video/${vm[1]}?autoplay=1`,url:u};
   else if(AUD.includes(x)||VID.includes(x))it={name:file,kind:AUD.includes(x)?'audio':'video',src:u,url:u};
   else it={name:u.replace(/^https?:\/\//,'').slice(0,40),kind:'embed',src:u,url:u};
@@ -1360,9 +1360,10 @@ function mpUrl(id){const inp=document.getElementById('mp-url-'+id);let u=inp.val
 function mpPP(id,on){const b=document.getElementById('mp-pp-'+id);if(b)b.textContent=on?'⏸':'▶';}
 function mpUI(id,el){const q=n=>document.getElementById(n+id);if(!q('mp-seek-'))return;q('mp-seek-').value=0;q('mp-cur-').textContent='0:00';q('mp-dur-').textContent='0:00';mpPP(id,!!el);}
 async function mpPlay(id,i){const s=mp[id],it=s&&s.list[i],st=document.getElementById('mp-stage-'+id);if(!it||!st)return;s.i=i;
-  if(s.el){s.el.pause();s.el.removeAttribute('src');s.el=null;}
+  mpClean(id);if(s.el){s.el.pause();s.el.removeAttribute('src');s.el=null;}
   mpRenderList(id);setTitle(id,it.name+' - Windows Media Player');
   if(it.yt&&location.protocol==='file:'&&!it.force){st.innerHTML=`<div class="text-center p-4"><img src="https://i.ytimg.com/vi/${it.yt}/hqdefault.jpg" style="max-width:100%;max-height:230px;margin:0 auto;cursor:pointer" onclick="window.open('${attr(it.url)}','_blank')"><div class="mt-3">YouTube won't play inside a page opened from a file on your computer.</div><div class="mt-2 flex gap-2 justify-center"><a href="${attr(it.url)}" target="_blank" rel="noopener" class="px-3 py-1 rounded bg-red-600 text-white">Watch on YouTube ↗</a><button class="px-3 py-1 rounded bg-gray-700" onclick="mp['${id}'].list[${i}].force=1;mpPlay('${id}',${i})">Try embedded player</button></div></div>`;mpUI(id,null);return;}
+  if(it.kind==='embed'&&(it.yt||it.list)){mpYT(id,it,i);return;}
   if(it.kind==='embed'){st.innerHTML=`<iframe src="${attr(it.src)}" class="w-full h-full" style="border:0;background:#000" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${attr(it.url)}" target="_blank" rel="noopener" class="absolute right-2 bottom-2 px-2 py-0.5 rounded bg-black/70 text-white hover:bg-black">Open in new tab ↗</a>`;mpUI(id,null);return;}
   if(it.vfs&&!it.src){try{it.src=URL.createObjectURL(await(await fetch(it.vfs)).blob());}catch(e){it.src=it.vfs;}}
   if(!mp[id]||mp[id].i!==i)return;
@@ -1375,14 +1376,28 @@ async function mpPlay(id,i){const s=mp[id],it=s&&s.list[i],st=document.getElemen
   el.onplay=()=>mpPP(id,true);el.onpause=()=>mpPP(id,false);el.onended=()=>mpNext(id,true);
   el.onerror=()=>{st.innerHTML=`<div class="text-center p-4"><div style="font-size:42px">⚠️</div>Windows Media Player cannot play this ${it.url?'link':'file'}.<br><span class="opacity-70">The format isn't supported, or the site doesn't allow playback here.</span>${it.url?`<br><br><a href="${attr(it.url)}" target="_blank" rel="noopener" class="underline">Open in new tab ↗</a>`:''}</div>`;mpPP(id,false);};
   mpUI(id,el);el.play().catch(()=>mpPP(id,false));}
-function mpToggle(id){const e=mpEl(id),s=mp[id];if(e)e.paused?e.play():e.pause();else if(s.list.length&&(s.i<0||s.list[s.i].kind!=='embed'))mpPlay(id,Math.max(0,s.i));}
-function mpStop(id){const s=mp[id],e=s.el;if(e){e.pause();e.currentTime=0;}else if(s.i>=0&&s.list[s.i]&&s.list[s.i].kind==='embed')document.getElementById('mp-stage-'+id).innerHTML='<div class="text-gray-500">Stopped</div>';mpPP(id,false);}
-function mpNext(id,auto){const s=mp[id];if(s.i+1<s.list.length)mpPlay(id,s.i+1);else if(auto)mpPP(id,false);}
-function mpPrev(id){const s=mp[id],e=s.el;if(e&&e.currentTime>3)e.currentTime=0;else if(s.i>0)mpPlay(id,s.i-1);}
-function mpSeek(id,v){const e=mpEl(id);if(e&&e.duration)e.currentTime=v/1000*e.duration;}
-function mpVol(id,v){const s=mp[id];s.vol=v/100;if(s.el)s.el.volume=s.vol;}
-function mpMute(id){const e=mpEl(id);if(!e)return;e.muted=!e.muted;document.getElementById('mp-mute-'+id).textContent=e.muted?'🔇':'🔊';}
+function mpToggle(id){const e=mpEl(id),s=mp[id];if(s.yt&&s.yt.getPlayerState)s.yt.getPlayerState()===1?s.yt.pauseVideo():s.yt.playVideo();else if(e)e.paused?e.play():e.pause();else if(s.list.length&&(s.i<0||s.list[s.i].kind!=='embed'))mpPlay(id,Math.max(0,s.i));}
+function mpStop(id){const s=mp[id],e=s.el;if(s.yt&&s.yt.stopVideo)s.yt.stopVideo();else if(e){e.pause();e.currentTime=0;}else if(s.i>=0&&s.list[s.i]&&s.list[s.i].kind==='embed')document.getElementById('mp-stage-'+id).innerHTML='<div class="text-gray-500">Stopped</div>';mpPP(id,false);}
+function mpNext(id,auto){const s=mp[id],cur=s.list[s.i];if(!auto&&s.yt&&cur&&cur.list&&s.yt.nextVideo){s.yt.nextVideo();return;}if(s.i+1<s.list.length)mpPlay(id,s.i+1);else if(auto)mpPP(id,false);}
+function mpPrev(id){const s=mp[id],e=s.el,cur=s.list[s.i];if(s.yt&&s.yt.getCurrentTime&&s.yt.getCurrentTime()>3)s.yt.seekTo(0,true);else if(s.yt&&cur&&cur.list&&s.yt.previousVideo&&s.yt.getPlaylistIndex&&s.yt.getPlaylistIndex()>0)s.yt.previousVideo();else if(e&&e.currentTime>3)e.currentTime=0;else if(s.i>0)mpPlay(id,s.i-1);}
+function mpSeek(id,v){const e=mpEl(id),y=mp[id].yt;if(y&&y.getDuration){y.seekTo(v/1000*y.getDuration(),true);return;}if(e&&e.duration)e.currentTime=v/1000*e.duration;}
+function mpVol(id,v){const s=mp[id];s.vol=v/100;if(s.el)s.el.volume=s.vol;if(s.yt&&s.yt.setVolume)s.yt.setVolume(+v);}
+function mpMute(id){const s=mp[id],b=document.getElementById('mp-mute-'+id);if(s.yt&&s.yt.isMuted){const m=s.yt.isMuted();m?s.yt.unMute():s.yt.mute();b.textContent=m?'🔊':'🔇';return;}const e=mpEl(id);if(!e)return;e.muted=!e.muted;document.getElementById('mp-mute-'+id).textContent=e.muted?'🔇':'🔊';}
 function mpFull(id){const st=document.getElementById('mp-stage-'+id);if(st.requestFullscreen)st.requestFullscreen();}
+/* ---- YouTube controlled through the IFrame Player API ---- */
+let ytReady=null;
+const ytLoad=()=>ytReady||(ytReady=new Promise(res=>{if(window.YT&&YT.Player)return res();const prev=window.onYouTubeIframeAPIReady;window.onYouTubeIframeAPIReady=()=>{prev&&prev();res();};const t=document.createElement('script');t.src='https://www.youtube.com/iframe_api';t.onerror=()=>{ytReady=null;res('fail');};document.head.appendChild(t);}));
+function mpClean(id){const s=mp[id];if(!s)return;clearInterval(s.ytT);if(s.yt&&s.yt.destroy){try{s.yt.destroy();}catch(e){}}s.yt=null;}
+function mpYTFail(id,it){const st=document.getElementById('mp-stage-'+id);if(!st)return;mpClean(id);st.innerHTML=`<div class="text-center p-4"><div style="font-size:42px">⚠️</div>This video can't be played here.<br><span class="opacity-70">The owner may have disabled embedding, or YouTube couldn't be reached.</span><br><br><a href="${attr(it.url)}" target="_blank" rel="noopener" class="underline">Watch on YouTube ↗</a></div>`;mpUI(id,null);}
+async function mpYT(id,it,i){const s=mp[id],st=document.getElementById('mp-stage-'+id);
+  st.innerHTML=`<div id="mp-yt-${id}"></div><a href="${attr(it.url)}" target="_blank" rel="noopener" class="absolute right-2 bottom-2 px-2 py-0.5 rounded bg-black/70 text-white hover:bg-black" style="z-index:5">Open in new tab ↗</a>`;mpUI(id,null);
+  const r=await ytLoad();if(!mp[id]||mp[id].i!==i)return;if(r==='fail'||!window.YT||!YT.Player)return mpYTFail(id,it);
+  const pv={autoplay:1,rel:0,playsinline:1,start:it.start||0};if(it.list){pv.list=it.list;pv.listType='playlist';}
+  s.yt=new YT.Player('mp-yt-'+id,{host:'https://www.youtube-nocookie.com',width:'100%',height:'100%',videoId:it.yt||undefined,playerVars:pv,events:{
+    onReady:e=>{e.target.setVolume(Math.round(s.vol*100));s.ytT=setInterval(()=>mpYTTick(id),250);},
+    onStateChange:e=>{mpPP(id,e.data===1);if(e.data===0&&!it.list)mpNext(id,true);},
+    onError:()=>mpYTFail(id,it)}});}
+function mpYTTick(id){const s=mp[id],p=s&&s.yt,sk=document.getElementById('mp-seek-'+id);if(!sk){if(s)clearInterval(s.ytT);return;}if(!p||!p.getCurrentTime)return;const d=p.getDuration?p.getDuration():0,c=p.getCurrentTime();if(!s.drag&&d)sk.value=c/d*1000;document.getElementById('mp-cur-'+id).textContent=fmtT(c);document.getElementById('mp-dur-'+id).textContent=fmtT(d);}
 const _g3=getAppHTML,_i3=initAppLogic;
 getAppHTML=function(a,id){if(a===MPKEY)return mpHTML(id);return _g3(a,id);};
 initAppLogic=function(a,id){_i3(a,id);if(a===MPKEY)mpInit(id);};
@@ -1403,3 +1418,4 @@ document.addEventListener('mouseup', () => document.body.classList.remove('dragg
 </script>
 </body>
 </html>
+  
